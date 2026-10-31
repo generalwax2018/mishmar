@@ -1,0 +1,93 @@
+# Mishmar Guard Watch
+
+Mobile-first PWA for house-of-worship security teams: scheduling, one-tap silent alerts, quick team messaging, incident reports, building layout surveys, outdoor event mode with live team positions, and an optional **Shabbat / Yom Tov lock**.
+
+## Run it
+
+```bash
+npm install
+npm start            # http://localhost:3000
+npm test             # 78 end-to-end checks (35 core + 43 v2)
+```
+
+Requires **Node 22+**. On first run the terminal prints a one-time **admin invite code**. Open the app, tap "I have an invite code", and create the first admin. The code works with or without the hyphen. Each restart before an account exists prints a new code and cancels the old one.
+
+**Local development:** set `MISHMAR_INSECURE_COOKIES=1` when running over plain `http://` on a phone or tunnel. To simulate Shabbat on a weekday, set `MISHMAR_FAKE_NOW=2026-11-06T23:00:00Z`. Never set either in production.
+
+**Production:**
+- Serve over HTTPS. It's required for install, push, camera and geolocation.
+- Set `MISHMAR_MASTER_KEY` (32 random bytes, base64) from a secrets manager.
+- Set `VAPID_SUBJECT=mailto:you@yourshul.org`.
+- Set `TRUST_PROXY` if you run behind a proxy.
+- Back up `data/` and keep the key separately.
+
+Optional: set `MAP_TILE_URL` to point at your own or a commercial tile server.
+
+## First-time setup (admin)
+
+1. **More › Shabbat / Yom Tov lock & maps:** congregation location, time zone, zmanim, whether to allow street maps.
+2. **More › Emergency card:** address, what to say to 911, procedures and contacts.
+3. **More › Team & posts:** add posts (Main entrance, Side door…) and create invite codes.
+4. **Map › Edit layout:** photograph the posted evacuation map, then walk the building (see below).
+5. **Schedule:** assign shifts. Guards confirm their Shabbat shifts from the Now screen.
+
+## Features
+
+### Now screen
+- **Shift or event card:** your current post or zone, radio channel and lead. During events it also has the check-in timer, briefing, and the location-sharing toggle.
+- **Silent alert:** one tap. It's stamped automatically with your **post or zone** (more reliable than indoor GPS) plus GPS when available. After sending you can add a type: Medical, Threat/lockdown, Suspicious person, Backup, Fire, Lost child.
+- **Escalation:** if nobody taps "I'm responding" within 60 seconds, the alert widens to the whole active team.
+- **Nearest responders:** at events, leads see who is closest and how far away.
+- **Quick messages:** All good, Need relief, Crowd building, Suspicious, Medical, Lost child, Need backup, Note. Each is stamped with your zone and feeds a team timeline. Urgent ones push to phones with a distinct vibration pattern per urgency, so guards can tell what arrived without looking.
+- **Emergency info:** a Call 911 button, the dispatcher script, contacts, procedures, the list of exits and equipment, and the floor plan.
+- **Shabbat readiness:** about a day before candle lighting, guards are asked to confirm their shifts and coordinators are told about uncovered posts.
+
+### Building layout & camera survey
+- **Base map:** photograph the evacuation map posted in your building, or upload a floor plan.
+- **Walk-through survey:** at each entrance, exit, AED, first-aid kit, camera or blind spot, take a photo, or a **panorama** using the phone camera's Pano mode, then tap where you're standing. The photo is attached to that pin or post, and panoramas open in a swipe-to-look viewer.
+- **Pin types:** door, exit, AED, first-aid/bleed kit, rally point, fire equipment, stairs, camera, hazard, note. Posts are placed on the plan, so alerts show exactly where someone is.
+- **List view:** for bright sun or a weak signal.
+
+The app does not automatically build a 3D model or floor plan from panoramas. A browser app can't do that reliably. A future native iOS app could use Apple's RoomPlan, which needs a LiDAR-equipped iPhone.
+
+### Outdoor event mode (Chanukah lighting, parade, festival)
+- **Setup:** an event has a place, start and end, lead, radio channel, briefing, and contacts (police detail, EMS, organizer).
+- **Zones:** Stage, North barricade, or parade route segments. Each zone has its own radio channel and zone lead. People are assigned to zones.
+- **Base map:** a street map (OpenStreetMap) **or** an uploaded site map. An uploaded map can be **GPS-calibrated** with two reference points so live positions line up.
+- **Live team positions:**
+  - **Opt-in:** each guard chooses to share.
+  - **Visibility per event:** leads only, the whole event team, or off.
+  - **Retention:** only the latest point is kept, and it's deleted automatically when the event ends.
+  - **Limitation:** sharing works while the app is open (a web-app limitation).
+- **Lead roster:** who has read the briefing, last seen, who's sharing, and late check-ins highlighted.
+- **Outdoor display mode** (More › Display): high contrast for sunlight, bigger buttons for gloves, and the screen stays awake during a live event.
+- **Faith-neutral:** churches and other communities simply leave the Shabbat lock off.
+
+### Shabbat / Yom Tov lock
+- **Calculation:** computed offline with Hebcal from the congregation's location, candle lighting to Havdalah. Yom Tov is included, and consecutive days merge into one lock.
+- **Enforced on the server:** every routine request is refused with `423`, even for admins, and the lock can't be switched off while it's active.
+- **Still available during the lock:** silent alerts (with types), acknowledge, all-clear, the live alert stream, push registration, sign-in, the **emergency card** and the **read-only floor plan**.
+- **Locked:** scheduling, reports, messages, events, layout edits and positions.
+
+Please have your rabbi review the zmanim and which functions stay available.
+
+## Security model
+
+| Area | What it does |
+|---|---|
+| Roles | **guard:** schedule, alerts, messages, own reports, view layout. **coordinator:** + scheduling, layout and survey, events, all incidents, alert history, invite guards. **admin:** + settings, roles, emergency card, delete reports. Checked on the server for every route. |
+| No directory | Guards see only display names on the schedule and their own event. Event data is visible only to that event's team. Accounts are invite-only. |
+| Minimal data | Name, login and password hash. No email or phone numbers. Alert GPS is deleted after 14 days, alerts after 90, messages after 7 days, event positions when the event ends, incidents after 365 days. |
+| Encryption at rest | AES-256-GCM with per-purpose keys covers incident text, alert locations, live positions, messages, briefings, event and emergency contacts, GPS calibration, push subscriptions, **all photos** (incidents, floor plans, survey photos and panoramas). Photo metadata (EXIF/GPS) is stripped in the browser and again on the server. |
+| Auth | scrypt hashes, 10+ character passwords, hashed session tokens, HttpOnly + SameSite=Strict + Secure cookies, lockout plus rate limits, sessions revoked on password change or deactivation. |
+| Web | Strict CSP with no inline script or style. Leaflet is self-hosted. Map tiles are the only third-party request, allowed only while an admin has street maps enabled. CSRF header required on writes, `no-store` on the API, and the service worker never caches data. |
+| Layout sensitivity | Floor plans and survey photos would help an attacker plan. They're encrypted, team-only, never cached offline, and coordinators are reminded not to share screenshots. |
+
+## Known limits / next steps
+
+- **Location sharing in the background:** live positions update only while the app is open on screen. Background tracking needs a native wrapper (Capacitor), which would also unlock iOS Critical Alerts.
+- **Shabbat edge case:** messages and events are locked during Shabbat. If a community wants quick messages to stay available for an event that overlaps the lock, that's a setting to add after rabbinic review.
+- **Scale:** one congregation per deployment and a single process (the rate limiter and SSE hub are in memory).
+- **Accounts:** there's no admin password reset (deactivate and re-invite) and no MFA or passkeys yet.
+- **Offline reports:** offline queuing of incident reports isn't built.
+- **Push delivery:** push hasn't been exercised against live Apple or Google push services.
