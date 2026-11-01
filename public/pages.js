@@ -274,7 +274,8 @@ function moreView(v) {
     isCoord() ? item('incidents', 'Incident reports') : null,
     isCoord() ? item('alerts', 'Alert history') : null,
     isCoord() ? item('team', 'Team & posts', 'Invites, roles, posts') : null,
-    h('button', { class: 'menuitem', onclick: showEmergency }, h('span', {}, 'Emergency info'), h('small', { class: 'muted' }, '911 script, contacts, exits'))));
+    h('button', { class: 'menuitem', onclick: showEmergency }, h('span', {}, 'Emergency info'), h('small', { class: 'muted' }, '911 script, contacts, exits')),
+    isCoord() ? h('button', { class: 'menuitem', onclick: () => { store.set('setupHidden', '0'); store.set('setupCollapsed', '0'); go('now'); } }, h('span', {}, 'Setup checklist'), h('small', { class: 'muted' }, 'Show it on the Now screen')) : null));
   if (isAdmin()) v.append(h('h2', {}, 'Admin'), h('div', { class: 'menu' }, item('settings', 'Shabbat / Yom Tov lock & maps'), item('emergency-edit', 'Emergency card')));
   v.append(h('h2', {}, 'You'), h('div', { class: 'menu' }, item('notifications', 'Notifications'), item('display', 'Display', store.get('outdoor') === '1' ? 'Outdoor mode on' : 'Outdoor mode off'), item('account', 'Password & sign out'), item('privacy', 'Your data')));
 }

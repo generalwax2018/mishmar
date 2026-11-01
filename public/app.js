@@ -412,6 +412,7 @@ function nowView(v) {
     v.append(h('div', { class: 'card lockcard' }, h('h3', {}, 'Shabbat / Yom Tov mode'),
       h('p', { class: 'muted' }, `Routine features are locked until ${fmtLock(li.until)}. Silent alerts and the emergency card stay available.`)));
   } else {
+    if (isCoord() && store.get('setupHidden') !== '1') { const sb = h('div', {}); v.append(sb); setupChecklist(sb); }
     const rb = h('div', {}); v.append(rb); readinessBanner(rb);
     v.append(h('div', { id: 'eventcard' }));
     updateEventCard();
@@ -493,6 +494,52 @@ function showBriefing(ev) {
     !ev.me.acked ? h('p', {}, h('button', { class: 'btn block', onclick: async () => {
       try { await api('POST', `/api/events/${ev.id}/ack`); ev.me.acked = true; ev.me.lastCheckin = new Date().toISOString(); s.close(); updateEventCard(); } catch (e) { toast(errText(e)); }
     } }, 'I’ve read it')) : null);
+}
+
+// ---------- setup checklist (admins & coordinators) ----------
+const SETUP_STEPS = [
+  ['basics', 'Congregation details', 'Name, location, time zone, Shabbat lock', () => go('more', 'settings'), true],
+  ['emergency', 'Emergency card', 'Address and what to say to 911', () => go('more', 'emergency-edit'), true],
+  ['posts', 'Add your posts', 'Main entrance, side door, lobby\u2026', () => go('more', 'team')],
+  ['team', 'Invite your team', 'Create one-time invite codes', () => go('more', 'team')],
+  ['floorplan', 'Photograph the floor plan', 'The evacuation map on your wall works', () => go('map', null, { siteId: S.mainSiteId, eventId: null, edit: false })],
+  ['pins', 'Pin exits, AED & your posts', 'Map \u203a Edit layout', () => go('map', null, { siteId: S.mainSiteId, eventId: null, edit: true })],
+  ['schedule', 'Schedule shifts', 'Who is at which post, and when', () => go('schedule')],
+  ['push', 'Turn on alerts on this phone', 'So alerts reach you when the app is closed', () => go('more', 'notifications')],
+];
+async function setupChecklist(box) {
+  let steps;
+  try { steps = (await api('GET', '/api/setup')).steps; } catch { return; }
+  const pushOn = await pushState().then((st) => st === 'on').catch(() => false);
+  const done = new Set(steps.filter((x) => x.done).map((x) => x.id));
+  if (pushOn) done.add('push');
+  const total = SETUP_STEPS.length, n = SETUP_STEPS.filter(([id]) => done.has(id)).length;
+  const hide = () => { store.set('setupHidden', '1'); box.remove(); toast('Checklist hidden \u2014 bring it back from More'); };
+  if (n === total) {
+    box.append(h('div', { class: 'card setupcard' }, h('div', { class: 'row between' }, h('h3', {}, '\u2713 You\u2019re all set up'), h('button', { class: 'linkbtn', onclick: hide }, 'Hide'))));
+    return;
+  }
+  // Compact by default so the silent-alert button stays on screen; expand to see every step.
+  const collapsed = store.get('setupCollapsed') !== '0';
+  const next = SETUP_STEPS.find(([id, , , , adminOnly]) => !done.has(id) && (!adminOnly || isAdmin()));
+  const bar = h('span', {}); bar.style.width = `${Math.round((n / total) * 100)}%`;
+  const list = h('div', { class: 'steps', hidden: collapsed || null }, SETUP_STEPS.map(([id, label, hint, open, adminOnly], i) => {
+    const ok = done.has(id), blocked = adminOnly && !isAdmin() && !ok;
+    return h('button', { class: 'step' + (ok ? ' done' : ''), disabled: blocked || null, onclick: open },
+      h('span', { class: 'tick' + (ok ? ' done' : '') }, ok ? '\u2713' : String(i + 1)),
+      h('span', { class: 'grow' }, h('span', { class: 'lbl' }, label), h('small', { class: 'muted' }, blocked ? 'Ask an admin to do this' : hint)),
+      ok || blocked ? null : h('span', { class: 'chev', 'aria-hidden': 'true' }, '\u203a'));
+  }));
+  const nextBtn = next ? h('button', { class: 'step next', hidden: !collapsed || null, onclick: next[3] },
+    h('span', { class: 'tick' }, String(SETUP_STEPS.indexOf(next) + 1)),
+    h('span', { class: 'grow' }, h('small', { class: 'muted' }, 'Next step'), h('span', { class: 'lbl' }, next[1])), h('span', { class: 'chev', 'aria-hidden': 'true' }, '\u203a')) : null;
+  const toggle = h('button', { class: 'linkbtn', 'aria-expanded': String(!collapsed), onclick: () => {
+    const now = !list.hidden; list.hidden = now; if (nextBtn) nextBtn.hidden = !now; store.set('setupCollapsed', now ? '1' : '0'); toggle.textContent = now ? 'All steps' : 'Less'; toggle.setAttribute('aria-expanded', String(!now));
+  } }, collapsed ? 'All steps' : 'Less');
+  box.append(h('div', { class: 'card setupcard' },
+    h('div', { class: 'row between' }, h('h3', {}, `Get set up \u00b7 ${n} of ${total}`), h('div', { class: 'row' }, toggle, h('button', { class: 'linkbtn', onclick: hide }, 'Hide'))),
+    h('div', { class: 'bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': String(n) }, bar),
+    nextBtn, list));
 }
 
 async function readinessBanner(box) {

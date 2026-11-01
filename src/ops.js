@@ -432,6 +432,25 @@ export function registerOps(app) {
 
   // ======================= PRE-SHABBAT READINESS =======================
   app.get('/api/readiness', auth, routineOnly, (req, res) => res.json(readiness(req.user)));
+
+  // ======================= SETUP CHECKLIST (admins/coordinators) =======================
+  // Each step is derived from real data, so it ticks itself off as the team sets things up.
+  app.get('/api/setup', auth, need('coordinator'), routineOnly, (req, res) => {
+    const c = getCongregation();
+    const one = (sql, ...a) => db.prepare(sql).get(...a).n;
+    const site = siteRow(c.main_site_id) || {};
+    const SAFE = "('exit','aed','kit','rally','fire')";
+    res.json({ steps: [
+      { id: 'basics', done: c.lat != null && c.lon != null && c.name !== 'My Congregation' },
+      { id: 'emergency', done: !!(c.address || c.emergency_script) },
+      { id: 'posts', done: one('SELECT COUNT(*) n FROM posts WHERE active = 1 AND event_id IS NULL') > 0 },
+      { id: 'team', done: one('SELECT COUNT(*) n FROM users WHERE active = 1') > 1 },
+      { id: 'floorplan', done: !!site.image_file },
+      { id: 'pins', done: one(`SELECT COUNT(*) n FROM markers WHERE site_id = ? AND type IN ${SAFE}`, c.main_site_id) > 0
+          && one('SELECT COUNT(*) n FROM posts WHERE active = 1 AND event_id IS NULL AND x IS NOT NULL') > 0 },
+      { id: 'schedule', done: one("SELECT COUNT(*) n FROM shifts s JOIN posts p ON p.id = s.post_id WHERE p.event_id IS NULL AND s.ends_at > ?", now()) > 0 },
+    ] });
+  });
 }
 
 function coordIds() { return db.prepare("SELECT id FROM users WHERE active = 1 AND role IN ('coordinator','admin')").all().map((r) => r.id); }

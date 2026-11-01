@@ -197,3 +197,22 @@ html.outdoor .quick { grid-template-columns: repeat(2, 1fr); }
 html.outdoor nav button { min-height: 64px; font-size: 13.5px; }
 html.outdoor .pin { transform: scale(1.25); }
 .fact strong { white-space: normal; overflow-wrap: break-word; hyphens: auto; }
+
+/* setup checklist */
+.setupcard h3 { margin: 0; }
+.setupcard .row { gap: 4px; }
+.bar { height: 6px; background: var(--card2); border-radius: 99px; overflow: hidden; margin: 10px 0 4px; }
+.bar > span { display: block; height: 100%; background: var(--ok); border-radius: 99px; transition: width .3s; }
+.steps { display: flex; flex-direction: column; }
+.step { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); padding: 11px 0; min-height: 52px; color: var(--ink); cursor: pointer; }
+.step:first-child { border-top: 0; }
+.step .grow { display: flex; flex-direction: column; }
+.step .lbl { font-weight: 600; }
+.step.done .lbl { color: var(--muted); text-decoration: line-through; }
+.step[disabled] { cursor: default; opacity: .7; }
+.tick { width: 28px; height: 28px; flex: none; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; font-weight: 700; font-size: 13px; color: var(--muted); }
+.tick.done { background: var(--ok); border-color: var(--ok); color: #fff; }
+.chev { color: var(--muted); font-size: 22px; }
+.setupcard .linkbtn { padding: 8px 6px; }
+.step.next { border-top: 0; padding-bottom: 2px; }
+[hidden] { display: none !important; }

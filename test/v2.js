@@ -52,6 +52,9 @@ try {
     assert.equal((await c.req('POST', '/api/auth/redeem', { code: inv, login, name, password: `${login}-password-1` })).status, 200);
   }
   const team = (await admin.req('GET', '/api/team')).body; const id = (l) => team.find((u) => u.login === l).id;
+  let st = (await admin.req('GET', '/api/setup')).body.steps; const step = (id) => st.find((x) => x.id === id).done;
+  assert.equal(step('basics'), false); assert.equal(step('team'), true); assert.equal(step('floorplan'), false);
+  assert.equal((await avi.req('GET', '/api/setup')).status, 403); ok('setup checklist starts incomplete; guards cannot see it');
   await admin.req('PUT', '/api/congregation', { name: 'Test Shul', lat: 39.7392, lon: -104.9903, tzid: 'America/Denver', candleMins: 18, havdalahMins: null, shabbatMode: true, osmEnabled: true });
 
   // ---------- layout ----------
@@ -82,6 +85,9 @@ try {
   r = await avi.req('GET', '/api/emergency');
   assert.equal(r.body.address, '123 Main St, Denver'); assert.equal(r.body.contacts.length, 1); assert.ok(r.body.pins.some((p) => p.type === 'exit')); ok('emergency card readable by guards; unsafe phone value dropped');
   assert.equal((await avi.req('PUT', '/api/emergency', {})).status, 403); ok('only admins edit the emergency card');
+  st = (await admin.req('GET', '/api/setup')).body.steps;
+  for (const id of ['basics', 'emergency', 'posts', 'team', 'floorplan', 'pins']) assert.equal(step(id), true, id);
+  assert.equal(step('schedule'), false); ok('setup checklist ticks steps off from real data (basics, emergency, posts, team, floor plan, pins)');
 
   // ---------- street maps toggle / CSP ----------
   let csp = (await admin.req('GET', '/')).headers.get('content-security-policy');
