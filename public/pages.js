@@ -275,9 +275,10 @@ function moreView(v) {
     isCoord() ? item('alerts', 'Alert history') : null,
     isCoord() ? item('team', 'Team & posts', 'Invites, roles, posts') : null,
     h('button', { class: 'menuitem', onclick: showEmergency }, h('span', {}, 'Emergency info'), h('small', { class: 'muted' }, '911 script, contacts, exits')),
+    isCoord() ? h('button', { class: 'menuitem', onclick: startDrill }, h('span', {}, 'Run a practice drill'), h('small', { class: 'muted' }, 'Test alerts and response times')) : null,
     isCoord() ? h('button', { class: 'menuitem', onclick: () => { store.set('setupHidden', '0'); store.set('setupCollapsed', '0'); go('now'); } }, h('span', {}, 'Setup checklist'), h('small', { class: 'muted' }, 'Show it on the Now screen')) : null));
   if (isAdmin()) v.append(h('h2', {}, 'Admin'), h('div', { class: 'menu' }, item('settings', 'Shabbat / Yom Tov lock & maps'), item('emergency-edit', 'Emergency card')));
-  v.append(h('h2', {}, 'You'), h('div', { class: 'menu' }, item('notifications', 'Notifications'), item('display', 'Display', store.get('outdoor') === '1' ? 'Outdoor mode on' : 'Outdoor mode off'), item('account', 'Password & sign out'), item('privacy', 'Your data')));
+  v.append(h('h2', {}, 'You'), h('div', { class: 'menu' }, item('notifications', 'Notifications'), item('display', 'Display', store.get('outdoor') === '1' ? 'Outdoor mode on' : 'Outdoor mode off'), item('account', 'Password & sign-in', S.totp ? 'Two-step sign-in on' : 'Two-step sign-in off'), item('privacy', 'Your data')));
 }
 
 // ---------- events ----------
@@ -431,13 +432,13 @@ async function incidentsPage(v) {
   catch (e) { v.append(h('p', { class: 'err' }, errText(e))); }
 }
 async function alertsPage(v) {
-  v.append(h('h2', {}, 'Alert history'));
+  v.append(h('h2', {}, 'Alert history'), h('p', {}, h('button', { class: 'btn small warnbtn', onclick: startDrill }, 'Run a practice drill')));
   try {
     const rows = await api('GET', '/api/alerts');
     v.append(...(rows.length ? rows.map((a) => h('div', { class: 'card' },
-      h('div', { class: 'row between' }, h('strong', {}, `${KIND[a.kind] || 'Alert'} — ${a.sender}`), h('span', { class: 'pill' }, a.status === 'active' ? 'active' : (a.outcome || 'closed').replace('_', ' '))),
+      h('div', { class: 'row between' }, h('strong', {}, a.drill ? h('span', { class: 'pill drill' }, 'DRILL') : null, ` ${KIND[a.kind] || 'Alert'} \u2014 ${a.sender}`), h('span', { class: 'pill' }, a.status === 'active' ? 'active' : (a.outcome || 'closed').replace('_', ' '))),
       h('div', { class: 'muted' }, [a.post?.name, a.event?.name].filter(Boolean).join(' · ')),
-      h('div', { class: 'muted small' }, `${fmtDay(a.createdAt)} ${fmtTime(a.createdAt)} · ${a.acked.length}/${a.recipients} responded${a.escalated ? ' · escalated' : ''}`))) : [h('p', { class: 'muted' }, 'No alerts yet.')]));
+      h('div', { class: 'muted small' }, `${fmtDay(a.createdAt)} ${fmtTime(a.createdAt)} · ${a.acked.length}/${a.recipients} responded${a.firstAckSecs != null ? ` \u00b7 first response ${fmtSecs(a.firstAckSecs)}` : ''}${a.escalated ? ' \u00b7 escalated' : ''}`))) : [h('p', { class: 'muted' }, 'No alerts yet.')]));
   } catch (e) { v.append(h('p', { class: 'err' }, errText(e))); }
 }
 async function teamPage(v) {
@@ -448,7 +449,7 @@ async function teamPage(v) {
     const roleSel = h('select', {}, h('option', { value: 'guard' }, 'Guard'), isAdmin() ? [h('option', { value: 'coordinator' }, 'Coordinator'), h('option', { value: 'admin' }, 'Admin')] : null);
     v.append(h('h2', {}, 'Invite someone'), h('div', { class: 'card' }, h('div', { class: 'row' }, h('div', { class: 'grow' }, roleSel),
       h('button', { class: 'btn', onclick: async () => {
-        try { const r = await api('POST', '/api/invites', { role: roleSel.value }); clear(inviteOut).append(h('p', {}, 'Share this one-time code in person or over a secure channel:'), h('p', { class: 'code' }, r.code), h('p', { class: 'muted' }, `Role: ${r.role}. Expires in 48 hours.`)); }
+        try { const r = await api('POST', '/api/invites', { role: roleSel.value }); clear(inviteOut).append(codeCard('invite', r.code, `Role: ${r.role}. Works once, expires in 48 hours.`, `Join the ${S.congregation} security team`)); }
         catch (e) { toast(errText(e)); }
       } }, 'Create code')), inviteOut));
     v.append(h('h2', {}, 'Building posts'));
@@ -460,7 +461,13 @@ async function teamPage(v) {
     v.append(h('h2', {}, 'Team'));
     const tc = h('div', { class: 'card' }); v.append(tc);
     for (const u of team) {
-      tc.append(h('div', { class: 'shift' }, h('div', { class: 'grow' }, h('div', {}, u.name, u.id === S.me.id ? ' (you)' : ''), h('div', { class: 'muted small' }, `${u.login} · ${u.role}${u.active ? '' : ' · deactivated'}`)),
+      const canReset = u.active && u.id !== S.me.id && (isAdmin() || u.role === 'guard');
+      tc.append(h('div', { class: 'shift' }, h('div', { class: 'grow' }, h('div', {}, u.name, u.id === S.me.id ? ' (you)' : ''), h('div', { class: 'muted small' }, `${u.login} \u00b7 ${u.role}${u.active ? '' : ' \u00b7 deactivated'}`)),
+        canReset ? h('button', { class: 'btn small secondary', onclick: async () => {
+          if (!confirm(`Create a password reset code for ${u.name}? It also turns off their two-step sign-in. Any earlier reset code stops working.`)) return;
+          try { const r = await api('POST', `/api/team/${u.id}/reset`); sheet(`Reset code for ${r.name}`, codeCard('reset', r.code, `For login \u201c${u.login}\u201d. Works once, expires in 24 hours.`, `Reset your Mishmar password`)); }
+          catch (e) { toast(errText(e)); }
+        } }, 'Reset') : null,
         isAdmin() && u.id !== S.me.id ? h('button', { class: 'btn small secondary', onclick: async () => {
           try {
             if (u.active) { if (confirm(`Deactivate ${u.name}? They are signed out, removed from future shifts, and their positions deleted.`)) await api('PATCH', `/api/team/${u.id}`, { active: false }); }
@@ -471,6 +478,35 @@ async function teamPage(v) {
     }
   } catch (e) { v.append(h('p', { class: 'err' }, errText(e))); }
 }
+// One-time code with a QR link (code travels in the URL fragment, never to the server)
+// and a printable sheet for handing out in person.
+function qrImg(text, cell = 5) {
+  try { const q = qrcode(0, 'M'); q.addData(text); q.make(); return h('img', { class: 'qr', src: q.createDataURL(cell, 2), alt: 'QR code' }); }
+  catch { return null; }
+}
+function codeCard(kind, code, note, heading) {
+  const link = `${location.origin}/#${kind}=${encodeURIComponent(code)}`;
+  const steps = kind === 'invite'
+    ? ['Scan the QR code with your phone camera (or open the link).', 'Choose the name your team will see, a login, and a password.', 'Add the app to your Home Screen and turn on alerts (More › Notifications).']
+    : ['Scan the QR code with your phone camera (or open the link).', 'Enter your login and a new password.', 'If you used two-step sign-in, set it up again in More › Password & sign-in.'];
+  const card = h('div', { class: 'codecard' },
+    h('p', { class: 'muted small' }, 'Share in person or over a secure channel. Anyone with this code can use it.'),
+    qrImg(link), h('p', { class: 'code' }, code), h('p', { class: 'muted small' }, note),
+    h('div', { class: 'row wrap' },
+      h('button', { class: 'btn small secondary', onclick: async () => { try { await navigator.clipboard.writeText(link); toast('Link copied'); } catch { toast('Could not copy'); } } }, 'Copy link'),
+      h('button', { class: 'btn small secondary', onclick: () => printSheet(h('div', { class: 'printsheet' },
+        h('h1', {}, heading), h('p', {}, S.congregation || 'Mishmar'), qrImg(link, 8), h('p', { class: 'code' }, code),
+        h('ol', {}, steps.map((t) => h('li', {}, t))), h('p', { class: 'small' }, note), h('p', { class: 'small' }, 'Keep this private. Shred it once used.'))) }, 'Print')));
+  return card;
+}
+function printSheet(node) {
+  const area = h('div', { id: 'printarea' }, node);
+  document.body.append(area); document.documentElement.classList.add('printing');
+  const done = () => { area.remove(); document.documentElement.classList.remove('printing'); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  setTimeout(() => window.print(), 50);
+}
+
 async function settingsPage(v) {
   let c;
   try { c = await api('GET', '/api/congregation'); } catch (e) { return v.append(h('p', { class: 'err' }, errText(e))); }
@@ -564,6 +600,41 @@ function displayPage(v) {
     h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: store.get('outdoor') === '1', onchange: (e) => { store.set('outdoor', e.target.checked ? '1' : '0'); applyDisplay(); } }), 'Outdoor mode'),
     h('p', { class: 'muted small' }, 'High contrast for bright sun, bigger buttons for gloves, and the screen stays on during a live event (where supported).')));
 }
+function totpCard() {
+  const box = h('div', { class: 'card' });
+  const draw = () => {
+    clear(box);
+    if (S.totp) {
+      const pw = h('input', { type: 'password', autocomplete: 'current-password', placeholder: 'Password' });
+      const code = h('input', { inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 7, placeholder: '6-digit code' });
+      box.append(h('p', { class: 'ok' }, '✓ On. Signing in needs your password and a code from your authenticator app.'),
+        h('details', {}, h('summary', { class: 'small' }, 'Turn off'), pw, h('div', { class: 'mt8' }, code),
+          h('p', {}, h('button', { class: 'btn small secondary', onclick: async () => {
+            try { await api('POST', '/api/me/totp/disable', { password: pw.value, code: code.value }); S.totp = false; toast('Two-step sign-in turned off'); draw(); } catch (e) { toast(errText(e)); }
+          } }, 'Turn off two-step sign-in'))));
+      return;
+    }
+    box.append(h('p', { class: 'muted' }, isCoord() ? 'Strongly recommended for you: your account can see floor plans, incidents and the team list.' : 'Adds a 6-digit code from an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…) to sign-in.'),
+      h('button', { class: 'btn', onclick: async () => {
+        try {
+          const r = await api('POST', '/api/me/totp/start');
+          const code = h('input', { inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 7, placeholder: '6-digit code' });
+          const err = h('p', { class: 'err' });
+          const s = sheet('Set up two-step sign-in',
+            h('p', {}, '1. In your authenticator app, add an account and scan this code:'), qrImg(r.uri, 4),
+            h('p', { class: 'muted small' }, 'Can’t scan? Enter this key instead:'), h('p', { class: 'secret' }, r.secret.replace(/(.{4})/g, '$1 ').trim()),
+            h('p', {}, '2. Type the 6-digit code it shows:'), code, err,
+            h('p', {}, h('button', { class: 'btn block', onclick: async () => {
+              try { await api('POST', '/api/me/totp/confirm', { code: code.value }); S.totp = true; s.close(); toast('Two-step sign-in is on'); draw(); } catch (e) { err.textContent = errText(e); }
+            } }, 'Turn on')),
+            h('p', { class: 'muted small' }, 'Lost your phone later? A coordinator or admin can give you a reset code.'));
+          code.focus();
+        } catch (e) { toast(errText(e)); }
+      } }, 'Set up two-step sign-in'));
+  };
+  draw();
+  return box;
+}
 function accountPage(v) {
   v.append(h('h2', {}, 'Change password'));
   const err = h('p', { class: 'err' }), okm = h('p', { class: 'ok' });
@@ -574,7 +645,13 @@ function accountPage(v) {
     h('label', {}, 'Current password'), h('input', { name: 'cur', type: 'password', autocomplete: 'current-password', required: true }),
     h('label', {}, 'New password (10+ characters)'), h('input', { name: 'next', type: 'password', minlength: 10, autocomplete: 'new-password', required: true }),
     err, okm, h('p', {}, h('button', { class: 'btn secondary', type: 'submit' }, 'Update password')));
-  v.append(h('div', { class: 'card' }, f), h('p', {}, h('button', { class: 'btn secondary block', onclick: async () => { try { await api('POST', '/api/auth/logout'); } catch { /* ignore */ } S.me = null; showAuth(); } }, 'Sign out')));
+  v.append(h('div', { class: 'card' }, f), h('h2', {}, 'Two-step sign-in'), totpCard(),
+    h('p', {}, h('button', { class: 'btn secondary block', onclick: async () => {
+      const pending = (await outbox.all()).length;
+      if (pending && !confirm(`${pending} report${pending === 1 ? ' is' : 's are'} still waiting to send from this phone. Signing out deletes ${pending === 1 ? 'it' : 'them'}. Sign out anyway?`)) return;
+      try { await api('POST', '/api/auth/logout'); } catch { /* ignore */ }
+      await outbox.clear(); S.me = null; showAuth();
+    } }, 'Sign out')));
 }
 function privacyPage(v) {
   v.append(h('h2', {}, 'Your data'), h('div', { class: 'card' },

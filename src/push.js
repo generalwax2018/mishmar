@@ -39,8 +39,17 @@ export function addStream(userId, res) {
 export function sendEvent(userId, event, data) {
   for (const res of streams.get(userId) || []) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
+// Named event (not a comment) so the app can tell a live connection from a dead one.
 export function heartbeat() {
-  for (const set of streams.values()) for (const res of set) res.write(': ping\n\n');
+  const msg = `event: ping\ndata: ${Date.now()}\n\n`;
+  for (const set of streams.values()) for (const res of set) res.write(msg);
+}
+// Delivery picture for an alert: who has the app open right now, who can get a push.
+export function reachability(userIds) {
+  const live = userIds.filter((id) => streams.get(id)?.size);
+  const pushable = new Set(db.prepare('SELECT DISTINCT user_id FROM push_subs').all().map((r) => r.user_id));
+  const push = userIds.filter((id) => !live.includes(id) && pushable.has(id));
+  return { live: live.length, push: push.length, unreachable: userIds.length - live.length - push.length };
 }
 
 export async function pushToUsers(userIds, payload) {

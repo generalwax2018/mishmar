@@ -201,3 +201,16 @@ if (!db.prepare('SELECT main_site_id FROM congregation WHERE id = 1').get().main
   db.prepare('UPDATE congregation SET main_site_id = ? WHERE id = 1').run(info.lastInsertRowid);
   db.prepare('UPDATE posts SET site_id = ? WHERE site_id IS NULL AND event_id IS NULL').run(info.lastInsertRowid);
 }
+
+// ---------- v3: drills, account recovery, two-factor ----------
+addColumn('alerts', 'drill', 'INTEGER NOT NULL DEFAULT 0');
+addColumn('users', 'totp_secret', 'BLOB');      // encrypted base32 secret (enrolled)
+addColumn('users', 'totp_pending', 'BLOB');     // encrypted secret awaiting confirmation
+addColumn('users', 'totp_last', 'INTEGER');     // last accepted time-step (blocks code replay)
+db.exec(`CREATE TABLE IF NOT EXISTS resets (
+  code_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_by INTEGER
+);`);

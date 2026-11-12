@@ -1,8 +1,8 @@
 // Service worker: caches only the static app shell (never API responses, so no
 // member, schedule, location or incident data is ever written to the cache), and
 // shows push notifications for alerts.
-const SHELL = 'mishmar-shell-v3';
-const FILES = ['/', '/style.css', '/app.js', '/pages.js', '/map.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css', '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png'];
+const SHELL = 'mishmar-shell-v4';
+const FILES = ['/', '/style.css', '/app.js', '/pages.js', '/map.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css', '/vendor/qrcode/qrcode.js', '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(SHELL).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));

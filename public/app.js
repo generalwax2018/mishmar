@@ -58,7 +58,8 @@ const ERR = {
   shabbat_lock: 'Locked for Shabbat / Yom Tov.', description_required: 'Please describe what happened.',
   street_maps_disabled: 'Street maps are turned off in Settings. Upload a site map instead.', points_too_close: 'Pick two spots at least ~15 m apart.',
   invalid_event: 'Check the event details (name, place, start and end).', sharing_off: 'Turn on location sharing first.', positions_disabled: 'Location sharing is off for this event.',
-  text_required: 'Type a short note.', invalid_marker: 'Give the pin a type and a label.', invalid_post: 'Check the name.',
+  text_required: 'Type a short note.', totp_required: 'Enter the 6-digit code from your authenticator app.', invalid_totp: 'That code didn\u2019t match. Wait for the next code and try again.',
+  invalid_reset: 'That reset code is invalid, used, expired, or for a different login.', no_pending_setup: 'Start setup again.', use_change_password: 'Use Change password for your own account.', invalid_marker: 'Give the pin a type and a label.', invalid_post: 'Check the name.',
 };
 const errText = (e) => ERR[e.code] || 'Something went wrong. Please try again.';
 const toast = (msg) => { const t = h('div', { class: 'toast', role: 'status' }, msg); document.body.append(t); setTimeout(() => t.remove(), 2600); };
@@ -126,29 +127,59 @@ async function syncWakeLock() {
 // ---------- auth ----------
 function showAuth() {
   if (S.es) { S.es.close(); S.es = null; }
-  let mode = 'login';
+  // Forget everything the previous user could see (shared phones), and start fresh on Now.
+  if (share.watch != null) { navigator.geolocation.clearWatch(share.watch); share.watch = null; }
+  Object.assign(S, { me: null, tab: 'now', page: null, arg: null, alerts: [], sent: null, sending: false, myEvent: null, feed: [], mapState: null, placing: null, totp: false });
+  Object.assign(share, { eventId: null, lastSent: 0, sentPos: null, last: null });
+  // Invite and reset links put the code in the URL fragment, which browsers never send to the server.
+  const frag = new URLSearchParams(location.hash.slice(1));
+  let mode = frag.get('invite') ? 'redeem' : frag.get('reset') ? 'reset' : 'login';
+  const preCode = frag.get('invite') || frag.get('reset') || '';
+  if (preCode) history.replaceState(null, '', location.pathname);
+  let needTotp = false, keep = {};
   const draw = () => {
     const err = h('p', { class: 'err', role: 'alert' });
-    const f = mode === 'login'
-      ? h('form', { onsubmit: async (e) => {
-          e.preventDefault();
-          try { await api('POST', '/api/auth/login', { login: f.login.value, password: f.password.value }); await boot(); } catch (x) { err.textContent = errText(x); }
-        } },
-        h('label', { for: 'login' }, 'Login'), h('input', { id: 'login', name: 'login', autocomplete: 'username', autocapitalize: 'none', required: true }),
+    const submit = (label) => h('p', {}, h('button', { class: 'btn block', type: 'submit' }, label));
+    let f;
+    if (mode === 'login') {
+      f = h('form', { onsubmit: async (e) => {
+        e.preventDefault();
+        try { await api('POST', '/api/auth/login', { login: f.login.value, password: f.password.value, totp: needTotp ? f.totp.value : undefined }); await boot(); }
+        catch (x) {
+          if (x.code === 'totp_required' && !needTotp) { needTotp = true; keep = { l: f.login.value, p: f.password.value }; draw(); return; }
+          err.textContent = errText(x);
+        }
+      } },
+        h('label', { for: 'login' }, 'Login'), h('input', { id: 'login', name: 'login', autocomplete: 'username', autocapitalize: 'none', required: true, value: keep.l || '' }),
         h('label', { for: 'pw' }, 'Password'), h('input', { id: 'pw', name: 'password', type: 'password', autocomplete: 'current-password', required: true }),
-        err, h('p', {}, h('button', { class: 'btn block', type: 'submit' }, 'Sign in')))
-      : h('form', { onsubmit: async (e) => {
-          e.preventDefault();
-          try { await api('POST', '/api/auth/redeem', { code: f.code.value, login: f.login.value, name: f.name.value, password: f.password.value }); await boot(); } catch (x) { err.textContent = errText(x); }
-        } },
-        h('label', { for: 'code' }, 'Invite code'), h('input', { id: 'code', name: 'code', autocapitalize: 'characters', autocomplete: 'off', placeholder: 'ABCDE-FGH23', required: true }),
+        needTotp ? [h('label', { for: 'totp' }, 'Code from your authenticator app'), h('input', { id: 'totp', name: 'totp', inputmode: 'numeric', autocomplete: 'one-time-code', pattern: '[0-9 ]{6,7}', maxlength: 7, required: true })] : null,
+        err, submit('Sign in'));
+      if (needTotp) setTimeout(() => { f.password.value = keep.p || ''; f.totp.focus(); });
+    } else if (mode === 'redeem') {
+      f = h('form', { onsubmit: async (e) => {
+        e.preventDefault();
+        try { await api('POST', '/api/auth/redeem', { code: f.code.value, login: f.login.value, name: f.name.value, password: f.password.value }); await boot(); } catch (x) { err.textContent = errText(x); }
+      } },
+        h('label', { for: 'code' }, 'Invite code'), h('input', { id: 'code', name: 'code', autocapitalize: 'characters', autocomplete: 'off', placeholder: 'ABCDE-FGH23', required: true, value: preCode }),
         h('label', { for: 'nm' }, 'Name shown to your team'), h('input', { id: 'nm', name: 'name', maxlength: 60, autocomplete: 'name', required: true }),
         h('label', { for: 'lg' }, 'Choose a login'), h('input', { id: 'lg', name: 'login', autocomplete: 'username', autocapitalize: 'none', required: true }),
         h('label', { for: 'pw2' }, 'Password (10+ characters)'), h('input', { id: 'pw2', name: 'password', type: 'password', minlength: 10, autocomplete: 'new-password', required: true }),
-        err, h('p', {}, h('button', { class: 'btn block', type: 'submit' }, 'Create account')));
+        err, submit('Create account'));
+    } else {
+      f = h('form', { onsubmit: async (e) => {
+        e.preventDefault();
+        try { await api('POST', '/api/auth/reset', { code: f.code.value, login: f.login.value, password: f.password.value }); toast('Password updated'); await boot(); } catch (x) { err.textContent = errText(x); }
+      } },
+        h('p', { class: 'muted small' }, 'Ask your coordinator or admin for a reset code. It works once, for 24 hours, and also turns off two-step sign-in so you can set it up again.'),
+        h('label', { for: 'rc' }, 'Reset code'), h('input', { id: 'rc', name: 'code', autocapitalize: 'characters', autocomplete: 'off', placeholder: 'ABCDE-FGH23', required: true, value: preCode }),
+        h('label', { for: 'rl' }, 'Your login'), h('input', { id: 'rl', name: 'login', autocomplete: 'username', autocapitalize: 'none', required: true }),
+        h('label', { for: 'rp' }, 'New password (10+ characters)'), h('input', { id: 'rp', name: 'password', type: 'password', minlength: 10, autocomplete: 'new-password', required: true }),
+        err, submit('Set new password'));
+    }
+    const link = (label, m) => h('button', { class: 'linkbtn', onclick: () => { mode = m; needTotp = false; draw(); } }, label);
     clear(root).append(h('div', { class: 'auth' },
       h('h1', {}, 'Mishmar'), h('p', { class: 'muted' }, 'Guard watch for your house of worship’s security team.'), f,
-      h('button', { class: 'linkbtn', onclick: () => { mode = mode === 'login' ? 'redeem' : 'login'; draw(); } }, mode === 'login' ? 'I have an invite code' : 'Back to sign in'),
+      mode === 'login' ? h('div', { class: 'row wrap' }, link('I have an invite code', 'redeem'), link('Forgot password?', 'reset')) : link('Back to sign in', 'login'),
       h('p', { class: 'muted small' }, 'Accounts are invite-only. We store your name, login and a salted password hash. No email, phone number or member directory.')));
   };
   draw();
@@ -159,7 +190,7 @@ async function boot() {
   applyDisplay();
   try {
     const me = await api('GET', '/api/me');
-    Object.assign(S, { me: me.user, congregation: me.congregation, vapid: me.vapidPublicKey, mainSiteId: me.mainSiteId, osmEnabled: me.osmEnabled, tileUrl: me.tileUrl });
+    Object.assign(S, { me: me.user, congregation: me.congregation, vapid: me.vapidPublicKey, mainSiteId: me.mainSiteId, osmEnabled: me.osmEnabled, tileUrl: me.tileUrl, totp: !!me.totp });
   } catch { return showAuth(); }
   await refreshShabbat();
   S.locked = lockInfo().locked;
@@ -167,6 +198,7 @@ async function boot() {
   connectStream();
   render();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  flushOutbox();
 }
 
 let posTimer = null;
@@ -185,8 +217,33 @@ function connectStream() {
   es.addEventListener('positions', () => { if (S.tab === 'map' && !posTimer) posTimer = setTimeout(() => { posTimer = null; refreshMapLive(); }, 3000); });
   es.addEventListener('roster', () => { if (S.page === 'event') document.dispatchEvent(new CustomEvent('roster')); });
   es.addEventListener('shabbat', (e) => { S.shabbat = JSON.parse(e.data); S.offset = S.shabbat.now - Date.now(); applyLock(false); });
-  es.onopen = () => loadAlerts();
+  es.addEventListener('ping', () => setConn(true));
+  es.onopen = () => { setConn(true); loadAlerts(); };
+  es.onerror = () => setConn(false);
 }
+
+// ---------- connection health ----------
+// The server sends a ping every 25 s. If we hear nothing for 60 s (or the phone
+// goes offline) we tell the guard plainly: alerts may not be reaching them.
+S.connOk = true; S.lastPing = Date.now(); S.downSince = null;
+function setConn(ok) {
+  if (ok) { S.lastPing = Date.now(); S.downSince = null; } else if (!S.downSince) S.downSince = Date.now();
+  if (S.connOk !== ok) { S.connOk = ok; renderConn(); }
+}
+function renderConn() {
+  const bar = $('#connbar'); if (!bar) return;
+  clear(bar);
+  if (S.connOk || !S.me) return;
+  bar.append(h('div', { class: 'connbar', role: 'alert' },
+    h('span', { class: 'grow' }, 'Not connected \u2014 alerts may not reach you. Use your radio.'),
+    h('button', { class: 'btn small secondary', onclick: () => { connectStream(); loadAlerts(); } }, 'Retry')));
+}
+setInterval(() => {
+  if (!S.me) return;
+  if (!navigator.onLine || Date.now() - S.lastPing > 60000) { setConn(false); if (navigator.onLine) connectStream(); }
+}, 10000);
+window.addEventListener('offline', () => setConn(false));
+window.addEventListener('online', () => { if (S.me) { connectStream(); loadAlerts(); flushOutbox(); } });
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && S.me) { await refreshShabbat(); applyLock(false); loadAlerts(); loadMyEvent(); }
   syncWakeLock();
@@ -261,9 +318,9 @@ function go(tab, page = null, arg = null) {
 }
 function render() {
   clear(root).append(h('div', { id: 'app' },
-    h('header', { id: 'hdr' }), h('div', { id: 'alertbar', class: 'alertbar', 'aria-live': 'assertive' }),
+    h('header', { id: 'hdr' }), h('div', { id: 'connbar' }), h('div', { id: 'alertbar', class: 'alertbar', 'aria-live': 'assertive' }),
     h('main', { id: 'view' }), h('nav', { id: 'nav', 'aria-label': 'Main' })));
-  renderChrome(); renderAlertBar(); renderView();
+  renderChrome(); renderConn(); renderAlertBar(); renderView();
 }
 function renderChrome() {
   const hdr = $('#hdr'); if (!hdr) return;
@@ -323,20 +380,22 @@ function renderAlertBar() {
   for (const a of S.alerts) {
     const canClose = a.mine || isCoord();
     const where = [a.post?.name, a.event?.name].filter(Boolean).join(' · ');
-    bar.append(h('div', { class: 'card alertcard', role: 'alert' },
+    bar.append(h('div', { class: 'card alertcard' + (a.drill ? ' drill' : ''), role: 'alert' },
+      a.drill ? h('div', { class: 'drilltag' }, 'DRILL \u00b7 practice only \u2014 respond as you would for real') : null,
       h('div', { class: 'row between' },
-        h('h3', {}, a.mine ? 'Your alert is active' : `${KIND[a.kind] || 'ALERT'} — ${a.sender}`),
+        h('h3', {}, a.mine ? (a.drill ? 'Your drill is running' : 'Your alert is active') : `${KIND[a.kind] || 'ALERT'} \u2014 ${a.sender}`),
         a.escalated ? h('span', { class: 'pill danger' }, 'Escalated') : null),
       where ? h('p', { class: 'where' }, where) : null,
-      h('p', { class: 'muted' }, `${a.mine ? KIND[a.kind] + ' · ' : ''}Sent ${ago(a.createdAt)} · ${a.acked.length}/${a.recipients} responding${a.acked.length ? ` (${a.acked.join(', ')})` : ''}`),
+      h('p', { class: 'muted' }, `${a.mine ? KIND[a.kind] + ' \u00b7 ' : ''}Sent ${ago(a.createdAt)} \u00b7 ${a.acked.length}/${a.recipients} responding${a.acked.length ? ` (${a.acked.join(', ')})` : ''}${a.firstAckSecs != null && (a.mine || isCoord()) ? ` \u00b7 first response ${fmtSecs(a.firstAckSecs)}` : ''}`),
       a.loc ? h('p', { class: 'muted small' }, `GPS ±${Math.round(a.loc.acc || 0)} m · `, h('a', { href: mapsLink(a.loc), target: '_blank', rel: 'noopener noreferrer' }, 'open in Maps')) : null,
       a.nearest?.length ? h('p', { class: 'muted small' }, `Nearest: ${a.nearest.map((n) => `${n.name} ${n.m} m`).join(', ')}`) : null,
       h('div', { class: 'row wrap' },
         !a.mine && !a.iAcked ? h('button', { class: 'btn grow', onclick: () => alertAct(a, 'ack') }, 'I’m responding') : null,
         !a.mine && a.iAcked ? h('span', { class: 'ok grow' }, '✓ You’re responding') : null,
         !S.locked && (a.post || a.loc) ? h('button', { class: 'btn secondary', onclick: () => showAlertOnMap(a) }, 'Map') : null,
-        canClose ? h('button', { class: 'btn secondary', onclick: () => alertAct(a, 'resolve', 'all_clear') }, 'All clear') : null,
-        canClose ? h('button', { class: 'btn secondary', onclick: () => alertAct(a, 'resolve', 'false_alarm') }, 'False alarm') : null)));
+        canClose && a.drill ? h('button', { class: 'btn secondary', onclick: () => alertAct(a, 'resolve', 'resolved') }, 'End drill') : null,
+        canClose && !a.drill ? h('button', { class: 'btn secondary', onclick: () => alertAct(a, 'resolve', 'all_clear') }, 'All clear') : null,
+        canClose && !a.drill ? h('button', { class: 'btn secondary', onclick: () => alertAct(a, 'resolve', 'false_alarm') }, 'False alarm') : null)));
   }
 }
 async function alertAct(a, what, outcome) {
@@ -349,20 +408,53 @@ async function alertAct(a, what, outcome) {
 const getPos = (o) => new Promise((res, rej) => (navigator.geolocation ? navigator.geolocation.getCurrentPosition(res, rej, o) : rej(new Error('nogeo'))));
 const posBody = (p) => ({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy });
 
-async function sendAlert() {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const fmtSecs = (n) => (n < 60 ? `${n}s` : `${Math.floor(n / 60)}m ${n % 60}s`);
+// Sends immediately; on a dropped connection it keeps retrying (the server ignores
+// duplicates for 2 minutes, so a retry never creates a second alert).
+async function sendAlert(opts = {}) {
   if (S.sending) return;
-  S.sending = true; renderView();
-  try {
-    const quick = share.last ? { coords: { latitude: share.last.lat, longitude: share.last.lon, accuracy: share.last.acc } }
-      : await getPos({ enableHighAccuracy: false, maximumAge: 120000, timeout: 1500 }).catch(() => null);
-    const r = await api('POST', '/api/alerts', quick ? posBody(quick) : {});
-    S.sent = r;
-    await loadAlerts();
-    if (!r.duplicate) refineLocation(r.id);
-  } catch (e) {
-    S.sent = { error: e.code === 'offline' ? 'No connection. Use your radio or call 911.' : 'Alert failed. Try again, use your radio, or call 911.' };
+  S.sending = true; S.sendTry = 1; S.sent = null; renderView();
+  const quick = share.last ? { coords: { latitude: share.last.lat, longitude: share.last.lon, accuracy: share.last.acc } }
+    : await getPos({ enableHighAccuracy: false, maximumAge: 120000, timeout: 1500 }).catch(() => null);
+  const body = { ...(quick ? posBody(quick) : {}), ...(opts.drill ? { drill: true, audience: opts.audience || 'duty' } : {}) };
+  const started = Date.now();
+  for (let attempt = 1; ; attempt++) {
+    S.sendTry = attempt;
+    try {
+      const r = await api('POST', '/api/alerts', body);
+      S.sent = r; await loadAlerts();
+      if (!r.duplicate) refineLocation(r.id);
+      break;
+    } catch (e) {
+      const transient = e.code === 'offline' || e.status >= 500;
+      if (!transient) { S.sent = { error: errText(e) }; break; }
+      if (Date.now() - started > 90000) { S.sent = { error: 'Could not reach the server for 90 seconds. Use your radio or call 911 now.' }; break; }
+      S.sent = { error: `No connection — retrying (attempt ${attempt})… Use your radio or call 911 if you can.` };
+      renderView();
+      await sleep(Math.min(2000 * attempt, 8000));
+    }
   }
   S.sending = false; renderView();
+}
+function startDrill() {
+  let audience = 'duty';
+  const opt = (val, label, sub) => h('label', { class: 'check' }, h('input', { type: 'radio', name: 'aud', value: val, checked: val === 'duty', onchange: () => { audience = val; } }), h('span', {}, label, h('small', { class: 'muted', style: null }, ` — ${sub}`)));
+  const s = sheet('Run a practice drill',
+    h('p', {}, 'Sends a clearly labelled DRILL alert through the real alert path, so you can check that phones get it and see how fast people respond.'),
+    opt('duty', 'On-duty team', 'whoever is on shift now (everyone if nobody is)'),
+    opt('all', 'Whole team', 'every active member'),
+    h('p', { class: 'muted small' }, 'Tell the team before the first drill. Drills are not available during Shabbat / Yom Tov.'),
+    h('p', {}, h('button', { class: 'btn block warnbtn', onclick: () => { s.close(); go('now'); sendAlert({ drill: true, audience }); } }, 'Send DRILL alert')));
+}
+function reachLine(r) {
+  if (!r?.reach) return null;
+  const { live, push, unreachable } = r.reach;
+  const parts = [live && `${live} with the app open`, push && `${push} by notification`].filter(Boolean);
+  return [
+    h('p', { class: 'muted small' }, parts.length ? `Delivered: ${parts.join(', ')}.` : 'Nobody had the app open or notifications on.'),
+    unreachable ? h('p', { class: 'warn small' }, `${unreachable} teammate${unreachable === 1 ? '' : 's'} couldn’t be reached (app closed and notifications off). Use your radio.`) : null,
+  ];
 }
 async function refineLocation(id) {
   for (let i = 0; i < 2; i++) {
@@ -418,12 +510,14 @@ function nowView(v) {
     updateEventCard();
   }
   v.append(h('div', { class: 'sos-wrap' + (S.myEvent?.active ? ' compact' : '') }, h('button', { class: 'sos', disabled: S.sending, onclick: sendAlert, 'aria-label': 'Send silent alert' },
-    h('span', {}, S.sending ? 'Sending…' : 'SILENT ALERT', h('small', {}, 'One tap · notifies your team with your post and location')))));
+    h('span', {}, S.sending ? (S.sendTry > 1 ? `Retrying\u2026 (${S.sendTry})` : 'Sending\u2026') : 'SILENT ALERT', h('small', {}, 'One tap \u00b7 notifies your team with your post and location')))));
   if (S.sent) {
     if (S.sent.error) v.append(h('p', { class: 'err', role: 'alert' }, S.sent.error));
     else {
-      v.append(h('div', { class: 'card' }, h('h3', {}, '✓ Alert sent'),
-        h('p', { class: 'muted' }, `${S.sent.notified} teammate${S.sent.notified === 1 ? '' : 's'} notified${S.sent.post ? ` · ${S.sent.post}` : ''}. Add what’s happening (optional):`),
+      v.append(h('div', { class: 'card' + (S.sent.drill ? ' drillcard' : '') }, h('h3', {}, S.sent.drill ? '\u2713 Drill sent' : '\u2713 Alert sent'),
+        h('p', { class: 'muted' }, `${S.sent.notified} teammate${S.sent.notified === 1 ? '' : 's'} notified${S.sent.post ? ` \u00b7 ${S.sent.post}` : ''}.`),
+        reachLine(S.sent),
+        h('p', { class: 'muted small' }, 'Add what\u2019s happening (optional):'),
         h('div', { class: 'chips' }, Object.entries(KIND).filter(([k]) => k !== 'help').map(([k, label]) =>
           h('button', { class: 'chip' + (S.sent.kind === k ? ' on' : ''), 'aria-pressed': String(S.sent.kind === k), onclick: () => setAlertKind(k) }, label)))));
     }
@@ -432,6 +526,7 @@ function nowView(v) {
     h('button', { class: 'btn danger-outline grow', onclick: showEmergency }, 'Emergency info · 911'),
     !S.locked ? h('button', { class: 'btn secondary', onclick: () => go('map') }, 'View map') : h('button', { class: 'btn secondary', onclick: () => showPlanModal() }, 'Floor plan')));
   if (S.locked) return;
+  if (isCoord()) v.append(h('p', {}, h('button', { class: 'linkbtn', onclick: startDrill }, 'Run a practice drill \u203a')));
   v.append(h('h2', {}, 'Quick message'), h('div', { class: 'quick' }, QUICK.map(([k, label, lvl]) => h('button', { class: `qbtn lvl${lvl}`, onclick: () => sendQuick(k) }, label))));
   v.append(h('h2', {}, S.myEvent ? `${S.myEvent.name} — team feed` : 'Team feed'), h('div', { 'data-feed': '6' }));
   loadFeed().then(renderFeedBoxes);
@@ -656,8 +751,16 @@ function reportView(v) {
     if (f.post.value) fd.append('postId', f.post.value);
     if (photo) fd.append('photo', photo, 'photo.jpg');
     f.go.disabled = true;
-    try { await api('POST', '/api/incidents', undefined, fd); f.reset(); photo = null; preview.hidden = true; f.when.value = localInput(new Date()); okmsg.textContent = '✓ Report submitted.'; loadMine(); }
-    catch (x) { err.textContent = errText(x); }
+    const done = (msg) => { f.reset(); photo = null; preview.hidden = true; f.when.value = localInput(new Date()); okmsg.textContent = msg; };
+    try { await api('POST', '/api/incidents', undefined, fd); done('\u2713 Report submitted.'); loadMine(); }
+    catch (x) {
+      if (x.code === 'offline' || x.status >= 500) {
+        try {
+          await outbox.add({ description: f.description.value, occurredAt: new Date(f.when.value).toISOString(), postId: f.post.value || null, photo, queuedAt: Date.now() });
+          done('Saved on this phone. It will send automatically when you\u2019re back online.'); renderOutboxNote();
+        } catch { err.textContent = 'You\u2019re offline and this phone can\u2019t store the report. Write it down and submit later.'; }
+      } else err.textContent = errText(x);
+    }
     f.go.disabled = false;
   } },
     h('label', { for: 'desc' }, 'What happened?'), h('textarea', { id: 'desc', name: 'description', maxlength: 4000, required: true }),
@@ -670,7 +773,8 @@ function reportView(v) {
       try { photo = (await shrinkImage(file)).blob; preview.src = URL.createObjectURL(photo); preview.hidden = false; } catch { err.textContent = 'Could not read that photo.'; }
     } }),
     preview, err, okmsg, h('p', {}, h('button', { class: 'btn block', name: 'go', type: 'submit' }, 'Submit report')));
-  v.append(h('div', { class: 'card' }, f));
+  v.append(h('div', { id: 'outboxnote' }), h('div', { class: 'card' }, f));
+  renderOutboxNote();
   api('GET', '/api/posts').then((ps) => ps.forEach((p) => $('#post')?.append(h('option', { value: p.id }, p.name)))).catch(() => {});
   const mine = h('div', {});
   async function loadMine() {
@@ -679,6 +783,51 @@ function reportView(v) {
   }
   v.append(mine); loadMine();
 }
+// Reports written with no signal wait in IndexedDB on this phone and send on reconnect.
+// They're cleared from the phone as soon as they're delivered (and on sign-out).
+const outbox = {
+  open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('mishmar', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('outbox', { keyPath: 'id', autoIncrement: true });
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+  },
+  async run(mode, fn) {
+    const d = await this.open();
+    return new Promise((res, rej) => { const t = d.transaction('outbox', mode); const q = fn(t.objectStore('outbox')); t.oncomplete = () => { d.close(); res(q?.result); }; t.onerror = () => rej(t.error); });
+  },
+  add(item) { return this.run('readwrite', (st) => st.add(item)); },
+  all() { return this.run('readonly', (st) => st.getAll()).catch(() => []); },
+  del(id) { return this.run('readwrite', (st) => st.delete(id)); },
+  clear() { return this.run('readwrite', (st) => st.clear()).catch(() => {}); },
+};
+let flushing = false;
+async function flushOutbox() {
+  if (flushing || !S.me || S.locked || !('indexedDB' in window)) return;
+  flushing = true;
+  try {
+    for (const item of await outbox.all()) {
+      const fd = new FormData();
+      fd.append('description', item.description); fd.append('occurredAt', item.occurredAt);
+      if (item.postId) fd.append('postId', item.postId);
+      if (item.photo) fd.append('photo', item.photo, 'photo.jpg');
+      try { await api('POST', '/api/incidents', undefined, fd); await outbox.del(item.id); toast('Queued report sent'); }
+      catch (e) {
+        if (e.code === 'offline' || e.status >= 500 || e.status === 423) break;   // try again later
+        await outbox.del(item.id); toast(`A queued report was rejected: ${errText(e)}`);
+      }
+    }
+  } finally { flushing = false; renderOutboxNote(); }
+}
+setInterval(flushOutbox, 30000);
+async function renderOutboxNote() {
+  const box = $('#outboxnote'); if (!box) return;
+  const n = (await outbox.all()).length;
+  clear(box);
+  if (n) box.append(h('div', { class: 'card warncard' }, h('strong', {}, `${n} report${n === 1 ? '' : 's'} waiting to send`), h('p', { class: 'muted small' }, 'Stored on this phone until you’re back online.'), h('button', { class: 'btn small secondary', onclick: flushOutbox }, 'Try now')));
+}
+
 function incidentCard(i) {
   const body = h('div', {});
   const desc = h('p', {}, i.description);

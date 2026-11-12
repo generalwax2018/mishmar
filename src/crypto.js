@@ -75,3 +75,39 @@ export const newInviteCode = () => {
   const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   return Array.from(crypto.randomBytes(10), (b) => a[b % a.length]).join('').replace(/(.{5})(.{5})/, '$1-$2');
 };
+
+// ---- TOTP (RFC 6238, SHA-1, 30 s, 6 digits) for authenticator apps ----
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+export function base32Encode(buf) {
+  let bits = 0, value = 0, out = '';
+  for (const byte of buf) { value = (value << 8) | byte; bits += 8; while (bits >= 5) { out += B32[(value >>> (bits - 5)) & 31]; bits -= 5; } }
+  if (bits > 0) out += B32[(value << (5 - bits)) & 31];
+  return out;
+}
+export function base32Decode(s) {
+  let bits = 0, value = 0; const out = [];
+  for (const ch of s.replace(/=+$/, '').toUpperCase()) {
+    const i = B32.indexOf(ch); if (i < 0) continue;
+    value = (value << 5) | i; bits += 5;
+    if (bits >= 8) { out.push((value >>> (bits - 8)) & 255); bits -= 8; }
+  }
+  return Buffer.from(out);
+}
+export function hotp(secretB32, counter) {
+  const msg = Buffer.alloc(8); msg.writeBigUInt64BE(BigInt(counter));
+  const mac = crypto.createHmac('sha1', base32Decode(secretB32)).update(msg).digest();
+  const o = mac[mac.length - 1] & 15;
+  return String(((mac.readUInt32BE(o) & 0x7fffffff) % 1e6)).padStart(6, '0');
+}
+export const newTotpSecret = () => base32Encode(crypto.randomBytes(20));
+// Returns the matching time-step (allowing +/-1 step of clock drift), or null.
+// Codes at or before `lastStep` are rejected so a code can't be replayed.
+export function verifyTotp(secretB32, code, lastStep = -1, at = Date.now()) {
+  if (!/^\d{6}$/.test(String(code || ''))) return null;
+  const step = Math.floor(at / 30000);
+  for (const s of [step - 1, step, step + 1]) {
+    if (s <= lastStep) continue;
+    if (crypto.timingSafeEqual(Buffer.from(hotp(secretB32, s)), Buffer.from(String(code)))) return s;
+  }
+  return null;
+}

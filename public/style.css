@@ -216,3 +216,30 @@ html.outdoor .pin { transform: scale(1.25); }
 .setupcard .linkbtn { padding: 8px 6px; }
 .step.next { border-top: 0; padding-bottom: 2px; }
 [hidden] { display: none !important; }
+/* link-styled buttons (Call 911, contact numbers) */
+a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+a.btn.block { display: flex; width: 100%; }
+.sheet .btn.big { margin: 6px 0 4px; }
+
+/* ===== v3: drills, connection, codes, print ===== */
+.connbar { display: flex; gap: 10px; align-items: center; background: var(--danger); color: #fff; padding: 10px 16px; font-weight: 600; }
+.alertcard.drill { border-color: var(--warn); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--warn) 14%, var(--card)) 0 14px, var(--card) 14px 28px); }
+.alertcard.drill h3 { color: var(--ink); }
+.drilltag { background: var(--warn); color: #000; font-weight: 800; letter-spacing: .4px; font-size: 13px; padding: 4px 10px; border-radius: 8px; margin-bottom: 8px; display: inline-block; }
+.drillcard { border-color: var(--warn); }
+.pill.drill { background: var(--warn); color: #000; margin-right: 4px; }
+.btn.warnbtn { background: var(--warn); color: #000; }
+.warn { color: var(--warn); }
+.codecard { text-align: center; padding-top: 10px; }
+.codecard .row { justify-content: center; }
+img.qr { width: 200px; height: 200px; image-rendering: pixelated; background: #fff; padding: 6px; border-radius: 8px; display: block; margin: 8px auto; }
+.secret { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px; letter-spacing: 1px; word-break: break-all; background: var(--card2); padding: 8px 10px; border-radius: 8px; }
+#printarea { display: none; }
+@media print {
+  html.printing body > *:not(#printarea) { display: none !important; }
+  html.printing #printarea { display: block; color: #000; background: #fff; }
+  .printsheet { font: 14pt/1.5 system-ui, sans-serif; text-align: center; padding: 24px; }
+  .printsheet ol { text-align: left; max-width: 520px; margin: 16px auto; }
+  .printsheet img.qr { width: 260px; height: 260px; }
+  .printsheet .code { font-size: 26pt; font-weight: 700; letter-spacing: 3px; }
+}

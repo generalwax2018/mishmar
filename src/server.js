@@ -3,9 +3,9 @@ import helmet from 'helmet';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, now, audit, DATA_DIR } from './db.js';
-import { initKeys, enc, dec, encJSON, decJSON, hashPassword, verifyPassword, DUMMY_HASH, newToken, sha256, newInviteCode } from './crypto.js';
+import { initKeys, enc, dec, encJSON, decJSON, hashPassword, verifyPassword, DUMMY_HASH, newToken, sha256, newInviteCode, newTotpSecret, verifyTotp } from './crypto.js';
 import { shabbatState, routineOnly, getCongregation, invalidateShabbatCache } from './shabbat.js';
-import { initPush, vapidPublicKey, saveSubscription, removeSubscription, addStream, notify, heartbeat } from './push.js';
+import { initPush, vapidPublicKey, saveSubscription, removeSubscription, addStream, notify, heartbeat, reachability } from './push.js';
 import {
   RANK, SESSION_DAYS, bad, str, optStr, isoOrNull, num, int, parseCookies, auth, need, isCoord, limited,
   stripJpeg, upload, savePhoto, deletePhoto, sendJpeg, meters,
@@ -81,9 +81,44 @@ app.post('/api/auth/login', async (req, res) => {
     }
     return bad(res, 'invalid_credentials', 401);
   }
+  // Second factor, only asked for after the password is right.
+  if (u.totp_secret) {
+    const secret = dec('field', u.totp_secret, `totp:${u.id}`).toString('utf8');
+    if (!req.body?.totp) return bad(res, 'totp_required', 401);
+    const step = verifyTotp(secret, String(req.body.totp).replace(/\s/g, ''), u.totp_last ?? -1);
+    if (step == null) {
+      const failed = u.failed + 1;
+      db.prepare('UPDATE users SET failed = ?, locked_until = ? WHERE id = ?')
+        .run(failed >= 5 ? 0 : failed, failed >= 5 ? new Date(Date.now() + 15 * 60000).toISOString() : u.locked_until, u.id);
+      audit(u.id, 'totp_failed');
+      return bad(res, 'invalid_totp', 401);
+    }
+    db.prepare('UPDATE users SET totp_last = ? WHERE id = ?').run(step, u.id);
+  }
   db.prepare('UPDATE users SET failed = 0, locked_until = NULL WHERE id = ?').run(u.id);
   startSession(res, u.id);
   audit(u.id, 'login');
+  res.json({ user: publicUser(u) });
+});
+
+// Account recovery: a coordinator/admin issues a one-time reset code; the member
+// uses it with their login to set a new password. It also clears two-factor, so
+// a lost phone can be recovered the same way. All other sessions are revoked.
+app.post('/api/auth/reset', async (req, res) => {
+  if (limited(`reset:${req.ip}`, 10, 15 * 60000)) return bad(res, 'too_many_attempts', 429);
+  const code = str(req.body?.code, 32)?.toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^(.{5})(.{5})$/, '$1-$2');
+  const login = str(req.body?.login, 64), pw = str(req.body?.password, 200);
+  if (!code || !login || !pw) return bad(res, 'missing_fields');
+  if (pw.length < 10) return bad(res, 'password_too_short');
+  const r = db.prepare('SELECT r.*, u.login FROM resets r JOIN users u ON u.id = r.user_id WHERE r.code_hash = ?').get(sha256(code));
+  if (!r || r.used_at || r.expires_at < now() || r.login.toLowerCase() !== login.toLowerCase()) return bad(res, 'invalid_reset', 400);
+  const u = db.prepare('SELECT * FROM users WHERE id = ? AND active = 1').get(r.user_id);
+  if (!u) return bad(res, 'invalid_reset', 400);
+  db.prepare('UPDATE users SET pw_hash = ?, failed = 0, locked_until = NULL, totp_secret = NULL, totp_pending = NULL, totp_last = NULL WHERE id = ?').run(await hashPassword(pw), u.id);
+  db.prepare('UPDATE resets SET used_at = ? WHERE code_hash = ?').run(now(), r.code_hash);
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
+  audit(u.id, 'password_reset_with_code', r.created_by);
+  startSession(res, u.id);
   res.json({ user: publicUser(u) });
 });
 
@@ -115,6 +150,7 @@ app.get('/api/me', auth, (req, res) => {
   const c = getCongregation();
   res.json({
     user: req.user, congregation: c.name, vapidPublicKey: vapidPublicKey(),
+    totp: !!db.prepare('SELECT totp_secret FROM users WHERE id = ?').get(req.user.id).totp_secret,
     mainSiteId: c.main_site_id, osmEnabled: !!c.osm_enabled, tileUrl: TILE_URL,
   });
 });
@@ -127,6 +163,35 @@ app.post('/api/me/password', auth, routineOnly, async (req, res) => {
   db.prepare('UPDATE users SET pw_hash = ? WHERE id = ?').run(await hashPassword(next), req.user.id);
   db.prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?').run(req.user.id, sha256(parseCookies(req).sid));
   audit(req.user.id, 'password_changed');
+  res.json({ ok: true });
+});
+
+// ---- two-factor (authenticator app) ----
+app.post('/api/me/totp/start', auth, routineOnly, (req, res) => {
+  const secret = newTotpSecret();
+  db.prepare('UPDATE users SET totp_pending = ? WHERE id = ?').run(enc('field', Buffer.from(secret), `totp-pending:${req.user.id}`), req.user.id);
+  const label = encodeURIComponent(`Mishmar:${req.user.login}`);
+  res.json({ secret, uri: `otpauth://totp/${label}?secret=${secret}&issuer=Mishmar&algorithm=SHA1&digits=6&period=30` });
+});
+app.post('/api/me/totp/confirm', auth, routineOnly, (req, res) => {
+  const u = db.prepare('SELECT totp_pending FROM users WHERE id = ?').get(req.user.id);
+  if (!u.totp_pending) return bad(res, 'no_pending_setup');
+  const secret = dec('field', u.totp_pending, `totp-pending:${req.user.id}`).toString('utf8');
+  const step = verifyTotp(secret, String(req.body?.code || '').replace(/\s/g, ''));
+  if (step == null) return bad(res, 'invalid_totp');
+  db.prepare('UPDATE users SET totp_secret = ?, totp_pending = NULL, totp_last = ? WHERE id = ?')
+    .run(enc('field', Buffer.from(secret), `totp:${req.user.id}`), step, req.user.id);
+  audit(req.user.id, 'totp_enabled');
+  res.json({ ok: true });
+});
+app.post('/api/me/totp/disable', auth, routineOnly, async (req, res) => {
+  const u = db.prepare('SELECT pw_hash, totp_secret, totp_last FROM users WHERE id = ?').get(req.user.id);
+  if (!u.totp_secret) return res.json({ ok: true });
+  if (!(await verifyPassword(String(req.body?.password || ''), u.pw_hash))) return bad(res, 'invalid_credentials', 403);
+  const secret = dec('field', u.totp_secret, `totp:${req.user.id}`).toString('utf8');
+  if (verifyTotp(secret, String(req.body?.code || '').replace(/\s/g, ''), u.totp_last ?? -1) == null) return bad(res, 'invalid_totp', 403);
+  db.prepare('UPDATE users SET totp_secret = NULL, totp_pending = NULL, totp_last = NULL WHERE id = ?').run(req.user.id);
+  audit(req.user.id, 'totp_disabled');
   res.json({ ok: true });
 });
 
@@ -182,6 +247,19 @@ app.post('/api/invites', auth, need('coordinator'), routineOnly, (req, res) => {
   db.prepare('INSERT INTO invites (code_hash, role, expires_at, created_by) VALUES (?,?,?,?)').run(sha256(code), role, expires, req.user.id);
   audit(req.user.id, 'invite_created', role);
   res.json({ code, role, expires });
+});
+// Coordinators can reset guards; admins can reset anyone except themselves.
+app.post('/api/team/:id/reset', auth, need('coordinator'), routineOnly, (req, res) => {
+  const u = db.prepare('SELECT id, role, display_name FROM users WHERE id = ? AND active = 1').get(+req.params.id);
+  if (!u) return bad(res, 'not_found', 404);
+  if (u.id === req.user.id) return bad(res, 'use_change_password', 400);
+  if (req.user.role !== 'admin' && u.role !== 'guard') return bad(res, 'forbidden', 403);
+  const code = newInviteCode();
+  const expires = new Date(Date.now() + 24 * 3600000).toISOString();
+  db.prepare('DELETE FROM resets WHERE user_id = ? AND used_at IS NULL').run(u.id);   // only the newest code works
+  db.prepare('INSERT INTO resets (code_hash, user_id, expires_at, created_by) VALUES (?,?,?,?)').run(sha256(code), u.id, expires, req.user.id);
+  audit(req.user.id, 'reset_code_issued', u.id);
+  res.json({ code, expires, name: u.display_name });
 });
 app.patch('/api/team/:id', auth, need('admin'), routineOnly, (req, res) => {
   const id = +req.params.id;
@@ -327,6 +405,8 @@ function alertView(a, me) {
     escalated: !!a.escalated_at, loc, nearest, mine: a.sender_id === me.id,
     post: a.post_id ? { id: a.post_id, name: a.post_name, siteId: a.post_site, x: a.post_x, y: a.post_y, lat: a.post_lat, lon: a.post_lon } : null,
     event: a.event_id ? { id: a.event_id, name: a.event_name } : null,
+    drill: !!a.drill,
+    firstAckSecs: (() => { const t = rec.filter((r) => r.acked_at).map((r) => Date.parse(r.acked_at)).sort()[0]; return t ? Math.round((t - Date.parse(a.created_at)) / 1000) : null; })(),
     recipients: rec.length, acked: rec.filter((r) => r.acked_at).map((r) => r.name),
     iAcked: rec.some((r) => r.user_id === me.id && r.acked_at),
   };
@@ -339,26 +419,39 @@ function loadAlertFor(id, me) {
 }
 const audienceOf = (a) => [a.sender_id, ...db.prepare('SELECT user_id FROM alert_recipients WHERE alert_id = ?').all(a.id).map((r) => r.user_id)];
 const KIND_LABEL = { help: 'Needs help', medical: 'Medical', threat: 'Threat / lockdown', suspicious: 'Suspicious person', backup: 'Needs backup', fire: 'Fire / evacuate', lost_child: 'Lost child' };
-const pushBody = (a) => `${a.sender_name || 'A teammate'}${a.post_name ? ` @ ${a.post_name}` : ''}: ${KIND_LABEL[a.kind] || 'Needs help'}. Open the app.`;
+const pushBody = (a) => `${a.drill ? 'DRILL \u2014 ' : ''}${a.sender_name || 'A teammate'}${a.post_name ? ` @ ${a.post_name}` : ''}: ${KIND_LABEL[a.kind] || 'Needs help'}. Open the app.`;
 
 app.post('/api/alerts', auth, (req, res) => {
   const me = req.user;
-  const recent = db.prepare(`SELECT id FROM alerts WHERE sender_id = ? AND status = 'active' AND created_at > ?`).get(me.id, new Date(Date.now() - 120000).toISOString());
-  if (recent) return res.json({ id: recent.id, notified: db.prepare('SELECT COUNT(*) c FROM alert_recipients WHERE alert_id = ?').get(recent.id).c, duplicate: true });
+  // Drills test the whole alert path but are clearly labelled. They are a routine
+  // activity: coordinators/admins only, and not during the observance lock.
+  const drill = req.body?.drill ? 1 : 0;
+  if (drill) {
+    if (!isCoord(me)) return bad(res, 'forbidden', 403);
+    const st = shabbatState();
+    if (st.locked) return res.status(423).json({ error: 'shabbat_lock', until: new Date(st.current.end).toISOString() });
+  }
+  const recipientsOf = (id) => db.prepare('SELECT user_id FROM alert_recipients WHERE alert_id = ?').all(id).map((r) => r.user_id);
+  const recent = db.prepare(`SELECT id FROM alerts WHERE sender_id = ? AND status = 'active' AND drill = ? AND created_at > ?`).get(me.id, drill, new Date(Date.now() - 120000).toISOString());
+  if (recent) { const r = recipientsOf(recent.id); return res.json({ id: recent.id, notified: r.length, duplicate: true, drill: !!drill, reach: reachability(r) }); }
   const kind = ALERT_KINDS.includes(req.body?.kind) ? req.body.kind : 'help';
   const ctx = currentContext(me.id);
-  const info = db.prepare('INSERT INTO alerts (sender_id, created_at, kind, post_id, event_id) VALUES (?,?,?,?,?)').run(me.id, now(), kind, ctx.postId, ctx.eventId);
+  const info = db.prepare('INSERT INTO alerts (sender_id, created_at, kind, post_id, event_id, drill) VALUES (?,?,?,?,?,?)').run(me.id, now(), kind, ctx.postId, ctx.eventId, drill);
   const id = Number(info.lastInsertRowid);
   const lat = num(req.body?.lat, -90, 90), lon = num(req.body?.lon, -180, 180);
   if (lat != null && lon != null) db.prepare('UPDATE alerts SET loc = ? WHERE id = ?').run(encJSON('field', { lat, lon, acc: num(req.body?.acc, 0, 1e6), at: now() }, locAad(id)), id);
-  const rcpts = recipientsFor(me.id, ctx);
+  const rcpts = drill && req.body?.audience === 'all'
+    ? db.prepare('SELECT id FROM users WHERE active = 1 AND id != ?').all(me.id).map((r) => r.id)
+    : recipientsFor(me.id, ctx);
   const ins = db.prepare('INSERT INTO alert_recipients (alert_id, user_id) VALUES (?,?)');
   for (const r of rcpts) ins.run(id, r);
-  audit(me.id, 'alert_sent', id);
+  audit(me.id, drill ? 'drill_sent' : 'alert_sent', id);
   const a = db.prepare(`${ALERT_SQL} WHERE a.id = ?`).get(id);
-  notify(rcpts, 'alert', { id }, { type: 'alert', id, title: 'SILENT ALERT', body: pushBody(a) });
+  // Snapshot reachability before sending so the sender knows who will actually get it.
+  const reach = reachability(rcpts);
+  notify(rcpts, 'alert', { id, drill: !!drill }, { type: 'alert', id, title: drill ? 'DRILL \u2014 practice alert' : 'SILENT ALERT', body: pushBody(a), drill: !!drill });
   notify([me.id], 'alert_update', { id });
-  res.json({ id, notified: rcpts.length, post: ctx.postName });
+  res.json({ id, notified: rcpts.length, post: ctx.postName, drill: !!drill, reach });
 });
 
 app.post('/api/alerts/:id/kind', auth, (req, res) => {
@@ -368,7 +461,7 @@ app.post('/api/alerts/:id/kind', auth, (req, res) => {
   db.prepare('UPDATE alerts SET kind = ? WHERE id = ?').run(req.body.kind, a.id);
   const full = db.prepare(`${ALERT_SQL} WHERE a.id = ?`).get(a.id);
   const others = audienceOf(a).filter((u) => u !== a.sender_id);
-  notify(others, 'alert_update', { id: a.id }, { type: 'alert', id: a.id, title: 'SILENT ALERT', body: pushBody(full) });
+  notify(others, 'alert_update', { id: a.id }, { type: 'alert', id: a.id, title: a.drill ? 'DRILL \u2014 practice alert' : 'SILENT ALERT', body: pushBody(full), drill: !!a.drill });
   notify([a.sender_id], 'alert_update', { id: a.id });
   res.json({ ok: true });
 });
@@ -425,7 +518,7 @@ export function escalate() {
     db.prepare('UPDATE alerts SET escalated_at = ? WHERE id = ?').run(now(), a.id);
     audit(null, 'alert_escalated', a.id);
     const full = db.prepare(`${ALERT_SQL} WHERE a.id = ?`).get(a.id);
-    notify(extra, 'alert', { id: a.id }, { type: 'alert', id: a.id, title: 'ESCALATED ALERT — no response yet', body: pushBody(full) });
+    notify(extra, 'alert', { id: a.id, drill: !!a.drill }, { type: 'alert', id: a.id, title: a.drill ? 'ESCALATED DRILL \u2014 no response yet' : 'ESCALATED ALERT \u2014 no response yet', body: pushBody(full), drill: !!a.drill });
     notify([...have], 'alert_update', { id: a.id });
   }
 }
@@ -437,7 +530,7 @@ app.get('/api/stream', auth, (req, res) => {
   res.write('retry: 3000\n\n');
   addStream(req.user.id, res);
 });
-setInterval(heartbeat, 25000).unref();
+setInterval(heartbeat, +process.env.MISHMAR_HEARTBEAT_MS || 25000).unref();
 
 // ---------- incidents ----------
 app.post('/api/incidents', auth, routineOnly, (req, res, next) => {
@@ -502,8 +595,15 @@ app.delete('/api/incidents/:id', auth, need('admin'), routineOnly, (req, res) =>
 // ---------- layout, events, messages, emergency, readiness ----------
 registerOps(app);
 
+// ---------- health (for uptime monitors; reveals nothing but liveness) ----------
+app.get('/healthz', (req, res) => {
+  try { db.prepare('SELECT 1').get(); res.set('Cache-Control', 'no-store').json({ ok: true }); }
+  catch { res.status(503).json({ ok: false }); }
+});
+
 // ---------- static + errors ----------
 app.use('/api', (req, res) => bad(res, 'not_found', 404));
+app.use('/vendor/qrcode', express.static(path.join(ROOT, 'node_modules', 'qrcode-generator'), { maxAge: '7d' }));
 app.use('/vendor/leaflet', express.static(path.join(ROOT, 'node_modules', 'leaflet', 'dist'), { maxAge: '7d' }));
 app.use(express.static(path.join(ROOT, 'public'), {
   setHeaders: (res, p) => { if (p.endsWith('sw.js') || p.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); },
