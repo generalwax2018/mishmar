@@ -7,10 +7,14 @@ Mobile-first PWA for house-of-worship security teams: scheduling, one-tap silent
 ```bash
 npm install
 npm start            # http://localhost:3000
-npm test             # 78 end-to-end checks (35 core + 43 v2)
+npm test             # 114 end-to-end checks
 ```
 
 Requires **Node 22+**. On first run the terminal prints a one-time **admin invite code**. Open the app, tap "I have an invite code", and create the first admin. The code works with or without the hyphen. Each restart before an account exists prints a new code and cancels the old one.
+
+**Server commands** (run in the project folder, even while the app is running):
+- `npm run invite`: prints a one-time **admin** invite code. Use `npm run invite -- guard` or `-- coordinator` for other roles.
+- `npm run reset-login -- <login>`: prints a one-time password reset code for that login. Use this if you're locked out; it also turns off two-step sign-in.
 
 **Local development:** set `MISHMAR_INSECURE_COOKIES=1` when running over plain `http://` on a phone or tunnel. To simulate Shabbat on a weekday, set `MISHMAR_FAKE_NOW=2026-11-06T23:00:00Z`. Never set either in production.
 
@@ -27,7 +31,7 @@ Optional: set `MAP_TILE_URL` to point at your own or a commercial tile server.
 
 1. **More › Shabbat / Yom Tov lock & maps:** congregation location, time zone, zmanim, whether to allow street maps.
 2. **More › Emergency card:** address, what to say to 911, procedures and contacts.
-3. **More › Team & posts:** add posts (Main entrance, Side door…) and create invite codes.
+3. **Invite your team:** tap **+ Invite someone** on the Now screen. Type who it's for, pick their role, then text it, show the QR code, or print it. Codes waiting to be used are listed under **More › Team & posts**, where you can show one again or cancel it.
 4. **Map › Edit layout:** photograph the posted evacuation map, then walk the building (see below).
 5. **Schedule:** assign shifts. Guards confirm their Shabbat shifts from the Now screen.
 
@@ -92,6 +96,7 @@ Please have your rabbi review the zmanim and which functions stay available.
 - **Offline reports:** reports written with no signal are kept on the phone and sent on reconnect. They're deleted from the phone once delivered, or at sign-out.
 - **Account recovery:** coordinators (for guards) and admins (for anyone) issue a one-time reset code, valid 24 h. Using it also clears two-step sign-in, which covers a lost phone. All the member's other sessions are signed out.
 - **Two-step sign-in:** optional authenticator-app codes (TOTP). The secret is encrypted at rest and codes can't be replayed. Strongly recommended for admins and coordinators.
+- **Easy invites:** a big "+ Invite someone" button on Now for coordinators and admins; plain-language role choices; one tap to text the invite; waiting invites listed by name so a leader can show a code again or cancel it. Re-showable codes are stored encrypted and wiped once used or expired.
 - **QR invites:** invite and reset codes come with a QR link and a printable hand-out sheet. The code travels in the URL fragment, which browsers never send to the server or logs.
 
 ## Hosting

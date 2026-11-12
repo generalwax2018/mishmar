@@ -243,3 +243,18 @@ img.qr { width: 200px; height: 200px; image-rendering: pixelated; background: #f
   .printsheet img.qr { width: 260px; height: 260px; }
   .printsheet .code { font-size: 26pt; font-weight: 700; letter-spacing: 3px; }
 }
+
+/* friendly invites */
+.bigcode { font: 800 38px/1.2 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 4px; text-align: center; margin: 12px 0; user-select: all; }
+.rolecard { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 8px 0; color: var(--ink); font-size: 16px; cursor: pointer; }
+.rolecard:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+.rolecard input { width: 22px; height: 22px; min-height: 0; margin-top: 2px; flex: none; accent-color: var(--accent); }
+.rolecard span { display: flex; flex-direction: column; gap: 2px; }
+input.big { font-size: 18px; min-height: 52px; }
+.easysteps { padding-left: 22px; font-size: 16px; }
+.easysteps li { margin: 6px 0; }
+.qrbox { text-align: center; margin: 10px 0; }
+.qrbox summary { cursor: pointer; font-weight: 600; }
+.row.center { justify-content: center; }
+.leaderrow { margin: 10px 0 0; }
+.card .dayh { margin-top: 18px; }

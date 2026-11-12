@@ -214,3 +214,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS resets (
   used_at TEXT,
   created_by INTEGER
 );`);
+
+// ---------- v4: friendlier invites ----------
+addColumn('invites', 'label', 'TEXT');        // who it's for, e.g. "Sarah K."
+addColumn('invites', 'code_enc', 'BLOB');     // encrypted code so a leader can show it again; wiped on use/expiry

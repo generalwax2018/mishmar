@@ -445,13 +445,17 @@ async function teamPage(v) {
   const redraw = () => go('more', 'team');
   try {
     const [team, posts] = await Promise.all([api('GET', '/api/team'), api('GET', '/api/posts')]);
-    const inviteOut = h('div', {});
-    const roleSel = h('select', {}, h('option', { value: 'guard' }, 'Guard'), isAdmin() ? [h('option', { value: 'coordinator' }, 'Coordinator'), h('option', { value: 'admin' }, 'Admin')] : null);
-    v.append(h('h2', {}, 'Invite someone'), h('div', { class: 'card' }, h('div', { class: 'row' }, h('div', { class: 'grow' }, roleSel),
-      h('button', { class: 'btn', onclick: async () => {
-        try { const r = await api('POST', '/api/invites', { role: roleSel.value }); clear(inviteOut).append(codeCard('invite', r.code, `Role: ${r.role}. Works once, expires in 48 hours.`, `Join the ${S.congregation} security team`)); }
-        catch (e) { toast(errText(e)); }
-      } }, 'Create code')), inviteOut));
+    const pending = await api('GET', '/api/invites').catch(() => []);
+    v.append(h('h2', {}, 'Invite someone'), h('div', { class: 'card' },
+      h('p', { class: 'muted' }, 'Create a one-time code for a new team member. You can text it, show a QR code, or print it.'),
+      h('button', { class: 'btn block big', onclick: inviteFlow }, '+ Invite someone'),
+      pending.length ? [h('h3', { class: 'dayh' }, 'Waiting to be used'), pending.map((i) => h('div', { class: 'shift' },
+        h('div', { class: 'grow' }, h('strong', {}, i.label || 'Unnamed invite'), h('div', { class: 'muted small' }, `${ROLE_INFO[i.role][0]} \u00b7 until ${fmtShort(i.expires)} \u00b7 by ${i.by}`)),
+        i.code ? h('button', { class: 'btn small secondary', onclick: () => showInvite(i) }, 'Show code') : null,
+        h('button', { class: 'x', 'aria-label': `Cancel invite for ${i.label || 'unnamed'}`, onclick: async () => {
+          if (!confirm(`Cancel the invite${i.label ? ` for ${i.label}` : ''}? The code will stop working.`)) return;
+          try { await api('DELETE', `/api/invites/${i.id}`); redraw(); } catch (e) { toast(errText(e)); }
+        } }, '\u00d7')))] : null));
     v.append(h('h2', {}, 'Building posts'));
     const pc = h('div', { class: 'card' }); v.append(pc);
     posts.forEach((p) => pc.append(h('div', { class: 'row between shift' }, h('span', {}, p.name, p.radio ? h('span', { class: 'muted small' }, ` · ${p.radio}`) : null, p.x == null ? h('span', { class: 'pill tiny' }, 'not on map') : null),
@@ -494,10 +498,70 @@ function codeCard(kind, code, note, heading) {
     qrImg(link), h('p', { class: 'code' }, code), h('p', { class: 'muted small' }, note),
     h('div', { class: 'row wrap' },
       h('button', { class: 'btn small secondary', onclick: async () => { try { await navigator.clipboard.writeText(link); toast('Link copied'); } catch { toast('Could not copy'); } } }, 'Copy link'),
-      h('button', { class: 'btn small secondary', onclick: () => printSheet(h('div', { class: 'printsheet' },
-        h('h1', {}, heading), h('p', {}, S.congregation || 'Mishmar'), qrImg(link, 8), h('p', { class: 'code' }, code),
-        h('ol', {}, steps.map((t) => h('li', {}, t))), h('p', { class: 'small' }, note), h('p', { class: 'small' }, 'Keep this private. Shred it once used.'))) }, 'Print')));
+      h('button', { class: 'btn small secondary', onclick: () => printCode(kind, code, note, heading) }, 'Print')));
   return card;
+}
+function printCode(kind, code, note, heading) {
+  const link = `${location.origin}/#${kind}=${encodeURIComponent(code)}`;
+  const steps = kind === 'invite'
+    ? ['Open your phone\u2019s camera and point it at the square code. Tap the link that appears.', 'Choose the name your team will see, a login, and a password.', 'Add the app to your Home Screen and turn on alerts (More \u203a Notifications).']
+    : ['Open your phone\u2019s camera and point it at the square code. Tap the link that appears.', 'Enter your login and a new password.', 'If you used two-step sign-in, set it up again in More \u203a Password & sign-in.'];
+  printSheet(h('div', { class: 'printsheet' },
+    h('h1', {}, heading), h('p', {}, S.congregation || 'Mishmar'), qrImg(link, 8), h('p', { class: 'code' }, code),
+    h('p', { class: 'small' }, `No camera? Go to ${location.origin} and enter the code above.`),
+    h('ol', {}, steps.map((t) => h('li', {}, t))), h('p', { class: 'small' }, note), h('p', { class: 'small' }, 'Keep this private. Shred it once used.')));
+}
+
+// ---------- invite flow (built for leaders who aren't tech people) ----------
+const ROLE_INFO = {
+  guard: ['Guard', 'Sees the schedule, sends alerts and incident reports'],
+  coordinator: ['Coordinator', 'Also schedules shifts, invites guards, runs drills and events'],
+  admin: ['Admin', 'Full control, including settings and the emergency card'],
+};
+function inviteFlow() {
+  let role = 'guard';
+  const name = h('input', { class: 'big', maxlength: 60, placeholder: 'e.g. Sarah Klein', autocomplete: 'off' });
+  const err = h('p', { class: 'err', role: 'alert' });
+  const roles = Object.entries(ROLE_INFO).filter(([r]) => r === 'guard' || isAdmin()).map(([r, [label, desc]]) =>
+    h('label', { class: 'rolecard' }, h('input', { type: 'radio', name: 'invrole', value: r, checked: r === 'guard', onchange: () => { role = r; } }),
+      h('span', {}, h('strong', {}, label), h('small', { class: 'muted' }, desc))));
+  const s = sheet('Invite someone',
+    h('label', {}, 'Who are you inviting?'), name,
+    h('p', { class: 'muted small' }, 'Only leaders see this name. It helps you tell invites apart.'),
+    h('label', {}, 'What will they do?'), roles, err,
+    h('p', {}, h('button', { class: 'btn block big', onclick: async () => {
+      try {
+        const inv = await api('POST', '/api/invites', { role, label: name.value.trim() || null });
+        s.close(); showInvite(inv);
+        if (S.page === 'team') go('more', 'team');
+      } catch (e) { err.textContent = errText(e); }
+    } }, 'Create invite')));
+  setTimeout(() => name.focus(), 50);
+}
+function showInvite(inv) {
+  const link = `${location.origin}/#invite=${encodeURIComponent(inv.code)}`;
+  const who = inv.label || 'your new team member';
+  const until = fmtShort(inv.expires);
+  const msg = `You're invited to join the ${S.congregation || 'security'} team on Mishmar.\n\nOpen this link on your phone:\n${link}\n\nOr go to ${location.origin}, tap "I have an invite code" and enter: ${inv.code}\n\nIt works once and expires ${until}.`;
+  const send = async () => {
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Mishmar invite', text: msg }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    location.href = `sms:?&body=${encodeURIComponent(msg)}`;
+  };
+  sheet(`Invite for ${who}`,
+    h('p', { class: 'muted' }, `${ROLE_INFO[inv.role][0]} \u00b7 works once \u00b7 until ${until}`),
+    h('p', { class: 'bigcode', 'aria-label': `Code ${inv.code.split('').join(' ')}` }, inv.code),
+    h('ol', { class: 'easysteps' },
+      h('li', {}, `Send it to ${who}, or let them scan the square code below with their phone camera.`),
+      h('li', {}, 'They open it on their phone and choose a login and password.'),
+      h('li', {}, 'They appear in your team list right away.')),
+    h('button', { class: 'btn block big', onclick: send }, navigator.share ? 'Send it (text, email\u2026)' : 'Send as a text message'),
+    h('details', { class: 'qrbox', open: true }, h('summary', {}, 'Square code to scan'), qrImg(link)),
+    h('div', { class: 'row wrap center' },
+      h('button', { class: 'btn secondary', onclick: async () => { try { await navigator.clipboard.writeText(msg); toast('Copied \u2014 paste it into a message'); } catch { toast('Could not copy'); } } }, 'Copy message'),
+      h('button', { class: 'btn secondary', onclick: () => printCode('invite', inv.code, `For ${who}. Works once, until ${until}.`, `Join the ${S.congregation || ''} security team`) }, 'Print')),
+    h('p', { class: 'muted small' }, 'Only send it to that person. You can show this code again under More \u203a Team & posts until it\u2019s used.'));
 }
 function printSheet(node) {
   const area = h('div', { id: 'printarea' }, node);

@@ -101,6 +101,22 @@ try {
   await coord.req('POST', `/api/alerts/${drillId}/resolve`, { outcome: 'resolved' });
   r = await admin.req('GET', '/api/alerts'); assert.ok(r.body.some((a) => a.drill && a.firstAckSecs != null)); ok('alert history marks drills with response time');
   sBen.close();
+
+  // ---------- friendly invites ----------
+  r = await coord.req('POST', '/api/invites', { role: 'guard', label: 'Sarah K.' });
+  assert.equal(r.body.label, 'Sarah K.'); const sarah = r.body; ok('invite can carry the name of who it is for');
+  assert.equal((await coord.req('POST', '/api/invites', { role: 'admin' })).status, 403); ok('coordinators can only invite guards');
+  const adminInv = (await admin.req('POST', '/api/invites', { role: 'coordinator', label: 'Dan' })).body;
+  r = await coord.req('GET', '/api/invites'); const mine = r.body.find((i) => i.id === sarah.id);
+  assert.equal(mine.code, sarah.code); assert.equal(mine.by, 'Cora'); assert.ok(!r.body.some((i) => i.id === adminInv.id)); ok('leaders can see waiting invites and show the code again; coordinators see guard invites only');
+  assert.equal((await avi.req('GET', '/api/invites')).status, 403); ok('guards cannot list invites');
+  { const db = new DatabaseSync(path.join(dataDir, 'mishmar.db'), { readOnly: true }); const row = db.prepare('SELECT code_enc FROM invites WHERE rowid = ?').get(sarah.id); assert.ok(!Buffer.from(row.code_enc).toString('latin1').includes(sarah.code.replace('-', '').slice(0, 5))); db.close(); } ok('stored invite code is encrypted');
+  assert.notEqual((await coord.req('DELETE', `/api/invites/${adminInv.id}`)).status, 200);
+  assert.equal((await admin.req('DELETE', `/api/invites/${adminInv.id}`)).status, 200);
+  assert.equal((await new Client().req('POST', '/api/auth/redeem', { code: adminInv.code, login: 'dan', name: 'Dan', password: 'dan-password-01' })).status, 400); ok('a cancelled invite stops working');
+  assert.equal((await new Client().req('POST', '/api/auth/redeem', { code: sarah.code, login: 'sarah', name: 'Sarah', password: 'sarah-password-1' })).status, 200);
+  assert.ok(!(await coord.req('GET', '/api/invites')).body.some((i) => i.id === sarah.id));
+  { const db = new DatabaseSync(path.join(dataDir, 'mishmar.db'), { readOnly: true }); assert.equal(db.prepare('SELECT code_enc FROM invites WHERE rowid = ?').get(sarah.id).code_enc, null); db.close(); } ok('a used invite leaves the list and its code is wiped');
   await stop();
 
   console.log('Phase 2: during Shabbat');
@@ -119,6 +135,6 @@ try {
   execFileSync('node', ['--no-warnings', 'src/backup.js'], { env: { ...process.env, MISHMAR_DATA: dataDir, MISHMAR_BACKUP_DIR: out } });
   const snap = fs.readdirSync(out)[0]; const files = fs.readdirSync(path.join(out, snap));
   assert.ok(files.includes('mishmar.db') && files.includes('photos') && !files.includes('master.key')); ok('backup has the database and photos but never the master key');
-  { const db = new DatabaseSync(path.join(out, snap, 'mishmar.db'), { readOnly: true }); assert.equal(db.prepare('SELECT COUNT(*) c FROM users').get().c, 4); db.close(); } ok('backup database is complete and readable');
+  { const db = new DatabaseSync(path.join(out, snap, 'mishmar.db'), { readOnly: true }); assert.equal(db.prepare('SELECT COUNT(*) c FROM users').get().c, 5); db.close(); } ok('backup database is complete and readable');
   console.log(`\nAll ${n} v3 checks passed.`);
 } catch (e) { console.error('FAIL', e); await stop().catch(() => {}); process.exit(1); }

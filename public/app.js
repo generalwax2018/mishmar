@@ -526,7 +526,7 @@ function nowView(v) {
     h('button', { class: 'btn danger-outline grow', onclick: showEmergency }, 'Emergency info · 911'),
     !S.locked ? h('button', { class: 'btn secondary', onclick: () => go('map') }, 'View map') : h('button', { class: 'btn secondary', onclick: () => showPlanModal() }, 'Floor plan')));
   if (S.locked) return;
-  if (isCoord()) v.append(h('p', {}, h('button', { class: 'linkbtn', onclick: startDrill }, 'Run a practice drill \u203a')));
+  if (isCoord()) v.append(h('div', { class: 'row leaderrow' }, h('button', { class: 'btn secondary grow', onclick: inviteFlow }, '+ Invite someone'), h('button', { class: 'btn secondary grow', onclick: startDrill }, 'Practice drill')));
   v.append(h('h2', {}, 'Quick message'), h('div', { class: 'quick' }, QUICK.map(([k, label, lvl]) => h('button', { class: `qbtn lvl${lvl}`, onclick: () => sendQuick(k) }, label))));
   v.append(h('h2', {}, S.myEvent ? `${S.myEvent.name} — team feed` : 'Team feed'), h('div', { 'data-feed': '6' }));
   loadFeed().then(renderFeedBoxes);
@@ -596,7 +596,7 @@ const SETUP_STEPS = [
   ['basics', 'Congregation details', 'Name, location, time zone, Shabbat lock', () => go('more', 'settings'), true],
   ['emergency', 'Emergency card', 'Address and what to say to 911', () => go('more', 'emergency-edit'), true],
   ['posts', 'Add your posts', 'Main entrance, side door, lobby\u2026', () => go('more', 'team')],
-  ['team', 'Invite your team', 'Create one-time invite codes', () => go('more', 'team')],
+  ['team', 'Invite your team', 'Create one-time invite codes', () => inviteFlow()],
   ['floorplan', 'Photograph the floor plan', 'The evacuation map on your wall works', () => go('map', null, { siteId: S.mainSiteId, eventId: null, edit: false })],
   ['pins', 'Pin exits, AED & your posts', 'Map \u203a Edit layout', () => go('map', null, { siteId: S.mainSiteId, eventId: null, edit: true })],
   ['schedule', 'Schedule shifts', 'Who is at which post, and when', () => go('schedule')],

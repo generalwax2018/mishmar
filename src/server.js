@@ -134,7 +134,7 @@ app.post('/api/auth/redeem', async (req, res) => {
   if (db.prepare('SELECT 1 FROM users WHERE login = ?').get(login)) return bad(res, 'login_taken', 409);
   const info = db.prepare('INSERT INTO users (login, display_name, role, pw_hash, created_at) VALUES (?,?,?,?,?)')
     .run(login, name, inv.role, await hashPassword(pw), now());
-  db.prepare('UPDATE invites SET used_at = ? WHERE code_hash = ?').run(now(), inv.code_hash);
+  db.prepare('UPDATE invites SET used_at = ?, code_enc = NULL WHERE code_hash = ?').run(now(), inv.code_hash);
   audit(info.lastInsertRowid, 'redeem_invite', inv.role);
   startSession(res, info.lastInsertRowid);
   res.json({ user: { id: Number(info.lastInsertRowid), login, name, role: inv.role } });
@@ -242,11 +242,32 @@ app.get('/api/team', auth, need('coordinator'), routineOnly, (req, res) => {
 app.post('/api/invites', auth, need('coordinator'), routineOnly, (req, res) => {
   const role = ['guard', 'coordinator', 'admin'].includes(req.body?.role) ? req.body.role : 'guard';
   if (role !== 'guard' && req.user.role !== 'admin') return bad(res, 'forbidden', 403);
-  const code = newInviteCode();
+  const label = optStr(req.body?.label, 60);
+  const code = newInviteCode(), hash = sha256(code);
   const expires = new Date(Date.now() + 48 * 3600000).toISOString();
-  db.prepare('INSERT INTO invites (code_hash, role, expires_at, created_by) VALUES (?,?,?,?)').run(sha256(code), role, expires, req.user.id);
+  // The code is also kept encrypted so a leader can show it again until it's used or expires.
+  db.prepare('INSERT INTO invites (code_hash, role, expires_at, created_by, label, code_enc) VALUES (?,?,?,?,?,?)')
+    .run(hash, role, expires, req.user.id, label, enc('field', Buffer.from(code), `invite:${hash}`));
   audit(req.user.id, 'invite_created', role);
-  res.json({ code, role, expires });
+  const id = db.prepare('SELECT rowid AS id FROM invites WHERE code_hash = ?').get(hash).id;
+  res.json({ id, code, role, label, expires });
+});
+// Invites still waiting to be used. Coordinators see guard invites; admins see all.
+app.get('/api/invites', auth, need('coordinator'), routineOnly, (req, res) => {
+  const rows = db.prepare(`SELECT i.rowid AS id, i.code_hash, i.role, i.label, i.expires_at, i.code_enc, u.display_name AS by
+    FROM invites i LEFT JOIN users u ON u.id = i.created_by WHERE i.used_at IS NULL AND i.expires_at > ? ORDER BY i.expires_at`).all(now());
+  res.json(rows.filter((r) => req.user.role === 'admin' || r.role === 'guard').map((r) => {
+    let code = null;
+    try { code = r.code_enc ? dec('field', r.code_enc, `invite:${r.code_hash}`).toString('utf8') : null; } catch { /* ignore */ }
+    return { id: r.id, role: r.role, label: r.label, expires: r.expires_at, by: r.by || 'Server', code };
+  }));
+});
+app.delete('/api/invites/:id', auth, need('coordinator'), routineOnly, (req, res) => {
+  const r = db.prepare('SELECT rowid AS id, role FROM invites WHERE rowid = ? AND used_at IS NULL').get(+req.params.id);
+  if (!r || (req.user.role !== 'admin' && r.role !== 'guard')) return bad(res, 'not_found', 404);
+  db.prepare('DELETE FROM invites WHERE rowid = ?').run(r.id);
+  audit(req.user.id, 'invite_cancelled', r.id);
+  res.json({ ok: true });
 });
 // Coordinators can reset guards; admins can reset anyone except themselves.
 app.post('/api/team/:id/reset', auth, need('coordinator'), routineOnly, (req, res) => {
@@ -624,6 +645,7 @@ export function purge() {
   }
   db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now());
   db.prepare('DELETE FROM invites WHERE expires_at < ?').run(ago(7));
+  db.prepare('UPDATE invites SET code_enc = NULL WHERE expires_at < ? AND code_enc IS NOT NULL').run(now());
   db.prepare('DELETE FROM shifts WHERE ends_at < ?').run(ago(90));
   db.prepare('DELETE FROM audit WHERE ts < ?').run(ago(RETENTION.auditDays));
   purgeOps();

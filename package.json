@@ -6,7 +6,9 @@
   "scripts": {
     "test": "node --no-warnings test/e2e.js && node --no-warnings test/v2.js && node --no-warnings test/v3.js",
     "start": "node --no-warnings src/server.js",
-    "backup": "node --no-warnings src/backup.js"
+    "backup": "node --no-warnings src/backup.js",
+    "invite": "node --no-warnings src/admin-cli.js invite",
+    "reset-login": "node --no-warnings src/admin-cli.js reset"
   },
   "keywords": [],
   "author": "",
