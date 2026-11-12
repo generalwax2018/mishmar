@@ -258,3 +258,136 @@ input.big { font-size: 18px; min-height: 52px; }
 .row.center { justify-content: center; }
 .leaderrow { margin: 10px 0 0; }
 .card .dayh { margin-top: 18px; }
+
+/* =====================================================================
+   Glass theme — same visual language as RiskPrism and Keywarden:
+   a soft colour field, frosted glass surfaces, a floating toolbar.
+   Outdoor display mode (below) switches all of it off for sunlight.
+   ===================================================================== */
+:root {
+  --bg: #eef1f7; --ink: #111827; --muted: #4b5563; --tertiary: #6b7280;
+  --card: rgba(255,255,255,.55); --card2: rgba(120,130,150,.14); --line: rgba(30,40,60,.10);
+  --glass-strong: rgba(255,255,255,.78); --glass-soft: rgba(255,255,255,.36);
+  --glass-border: rgba(255,255,255,.75); --glass-edge: rgba(15,23,42,.08); --glass-shine: rgba(255,255,255,.9);
+  --accent: #0a6cff; --accent-2: #3d8bff; --accent-ink: #fff; --accent-soft: rgba(10,108,255,.14);
+  --danger: #e5303a; --danger-2: #ff5a5f; --ok: #1f9d57; --warn: #c27a00;
+  --blob-1: rgba(88,140,255,.50); --blob-2: rgba(130,96,255,.34); --blob-3: rgba(64,200,210,.36); --blob-4: rgba(255,150,190,.28);
+  --shadow: 0 1px 1px rgba(15,23,42,.04), 0 8px 28px rgba(15,23,42,.08);
+  --blur: saturate(180%) blur(24px);
+  --r: 18px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0f1a; --ink: #f3f4f6; --muted: #b4bac6; --tertiary: #8b92a1;
+    --card: rgba(28,32,44,.55); --card2: rgba(255,255,255,.08); --line: rgba(255,255,255,.09);
+    --glass-strong: rgba(36,40,54,.82); --glass-soft: rgba(255,255,255,.06);
+    --glass-border: rgba(255,255,255,.14); --glass-edge: rgba(0,0,0,.35); --glass-shine: rgba(255,255,255,.16);
+    --accent: #3d8bff; --accent-2: #6aa6ff; --accent-soft: rgba(61,139,255,.2);
+    --danger: #ff453a; --danger-2: #ff6b61; --ok: #30d158; --warn: #ffb340;
+    --blob-1: rgba(40,90,255,.42); --blob-2: rgba(120,70,255,.32); --blob-3: rgba(0,170,190,.26); --blob-4: rgba(255,70,140,.18);
+    --shadow: 0 1px 1px rgba(0,0,0,.25), 0 10px 32px rgba(0,0,0,.35);
+    color-scheme: dark;
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --card: rgba(255,255,255,.92); --glass-strong: rgba(255,255,255,.97); }
+  @media (prefers-color-scheme: dark) { :root { --card: rgba(28,32,44,.94); --glass-strong: rgba(36,40,54,.97); } }
+}
+html { background: var(--bg); }
+html, body { background: transparent; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto, sans-serif; -webkit-font-smoothing: antialiased; letter-spacing: -.005em; }
+body::before { content: ""; position: fixed; inset: -10%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(40% 36% at 10% 12%, var(--blob-1), transparent 70%),
+    radial-gradient(38% 34% at 92% 8%, var(--blob-2), transparent 70%),
+    radial-gradient(44% 40% at 85% 85%, var(--blob-3), transparent 70%),
+    radial-gradient(36% 32% at 15% 92%, var(--blob-4), transparent 70%),
+    var(--bg); }
+
+/* glass surfaces */
+.card, .menu, .sheet, header, nav .in, .msg {
+  background: var(--card); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 var(--glass-shine), 0 0 0 .5px var(--glass-edge), var(--shadow);
+}
+.card { border-radius: var(--r); padding: 16px; }
+.menu { border-radius: var(--r); overflow: hidden; }
+
+/* floating toolbar */
+header { position: sticky; top: calc(env(safe-area-inset-top) + 10px); z-index: 50; margin: calc(env(safe-area-inset-top) + 10px) 12px 6px; padding: 8px 10px 8px 10px; border-radius: 18px; background: var(--glass-strong); }
+header h1 { font-size: 15.5px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+header small { color: var(--tertiary); font-size: 12px; }
+.app-icon { width: 34px; height: 34px; border-radius: 9px; flex: none; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(160deg, #5aa2ff 0%, #0a5cff 55%, #4b2bd6 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 2px 6px rgba(10,92,255,.35); }
+.app-icon svg { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.app-icon.lg { width: 60px; height: 60px; border-radius: 16px; margin-bottom: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 8px 22px rgba(10,92,255,.35); }
+.app-icon.lg svg { width: 32px; height: 32px; }
+main { padding: 6px 16px 112px; }
+h2 { font-size: 11.5px; letter-spacing: .07em; color: var(--muted); margin: 24px 4px 8px; }
+
+/* floating tab bar */
+nav { background: none; border: 0; padding: 0 12px calc(env(safe-area-inset-bottom) + 10px); pointer-events: none; }
+nav .in { pointer-events: auto; border-radius: 22px; padding: 4px; background: var(--glass-strong); }
+nav button { border-radius: 16px; min-height: 54px; color: var(--tertiary); font-weight: 500; transition: background .15s, color .15s; }
+nav button[aria-current="page"] { color: var(--accent); background: var(--accent-soft); font-weight: 650; }
+
+/* pills */
+.pill { background: var(--card2); color: var(--muted); padding: 3px 10px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 6px; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 7px currentColor; }
+.pill.on { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.pill.lock { background: var(--accent-soft); color: var(--accent); }
+
+/* buttons */
+.btn { border-radius: 12px; font-weight: 600; letter-spacing: -.005em; transition: filter .15s, transform .08s;
+  background: linear-gradient(180deg, var(--accent-2), var(--accent)); color: var(--accent-ink);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent); }
+.btn:hover { filter: brightness(1.06); }
+.btn:active { transform: scale(.985); }
+.btn.secondary { background: var(--glass-strong); color: var(--ink); border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 var(--glass-shine), 0 0 0 .5px var(--glass-edge), 0 1px 3px rgba(15,23,42,.06); }
+.btn.danger { background: linear-gradient(180deg, var(--danger-2), var(--danger)); color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 4px 14px color-mix(in srgb, var(--danger) 35%, transparent); }
+.linkbtn { color: var(--accent); font-weight: 500; }
+a { color: var(--accent); }
+
+/* fields */
+input, select, textarea { background: var(--card2); border: 1px solid transparent; border-radius: 12px; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--glass-strong); }
+input::placeholder, textarea::placeholder { color: var(--tertiary); }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; }
+.seg { background: var(--card2); box-shadow: inset 0 1px 2px rgba(0,0,0,.06); }
+.seg button[aria-pressed="true"] { background: var(--glass-strong); color: var(--ink); box-shadow: inset 0 1px 0 var(--glass-shine), 0 1px 4px rgba(0,0,0,.12); }
+.rolecard { background: var(--glass-soft); border-color: var(--line); }
+.rolecard:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
+
+/* the alert button: a glowing glass-edged disc */
+.sos { background: radial-gradient(circle at 50% 30%, var(--danger-2), var(--danger) 70%); color: #fff;
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.35), inset 0 -6px 18px rgba(0,0,0,.18),
+    0 0 0 10px color-mix(in srgb, var(--danger) 16%, transparent), 0 0 0 22px color-mix(in srgb, var(--danger) 8%, transparent),
+    0 18px 40px color-mix(in srgb, var(--danger) 40%, transparent); }
+.alertcard { background: color-mix(in srgb, var(--danger) 12%, var(--card)); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+.card.lockcard { border-color: color-mix(in srgb, var(--accent) 50%, transparent); background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+
+/* sheets and toasts */
+.sheet-wrap { background: rgba(10,14,24,.35); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+.sheet { background: var(--glass-strong); border-radius: 24px 24px 0 0; border-bottom: 0; }
+.toast { background: var(--glass-strong); color: var(--ink); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); border: 1px solid var(--glass-border); box-shadow: var(--shadow); }
+.connbar { border-radius: 14px; margin: 8px 12px 0; box-shadow: 0 6px 18px color-mix(in srgb, var(--danger) 35%, transparent); }
+
+/* sign-in screen */
+.auth { padding-top: 56px; }
+.auth > .card, .auth form { border-radius: 22px; }
+.auth h1 { font-size: 28px; font-weight: 700; letter-spacing: -.025em; }
+
+/* Outdoor display mode: solid, high-contrast, no blur — readable in direct sun */
+html.outdoor body::before { display: none; }
+html.outdoor { --glass-strong: #fff; --glass-soft: #fff; --glass-border: #000; --glass-shine: transparent; --glass-edge: transparent; --shadow: none; --accent-2: #0047c2; --danger-2: #c20012; --accent-soft: rgba(0,71,194,.12); --card2: #eef1f6; background: #fff; }
+html.outdoor .card, html.outdoor .menu, html.outdoor .sheet, html.outdoor header, html.outdoor nav .in, html.outdoor .msg, html.outdoor .toast { backdrop-filter: none; -webkit-backdrop-filter: none; background: #fff; }
+html.outdoor .btn { box-shadow: none; }
+
+@media print { body::before { display: none; } }
+.auth form { margin-top: 18px; padding: 6px 18px 18px; border-radius: 22px; background: var(--card); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); border: 1px solid var(--glass-border); box-shadow: inset 0 1px 0 var(--glass-shine), 0 0 0 .5px var(--glass-edge), var(--shadow); }
+.auth form .btn { margin-top: 14px; }
+html.outdoor .auth form { backdrop-filter: none; background: #fff; }
+.toast { font-size: 14px; font-weight: 550; padding: 10px 16px; border-radius: 14px; }

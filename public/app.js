@@ -178,7 +178,7 @@ function showAuth() {
     }
     const link = (label, m) => h('button', { class: 'linkbtn', onclick: () => { mode = m; needTotp = false; draw(); } }, label);
     clear(root).append(h('div', { class: 'auth' },
-      h('h1', {}, 'Mishmar'), h('p', { class: 'muted' }, 'Guard watch for your house of worship’s security team.'), f,
+      brandIcon(true), h('h1', {}, 'Mishmar'), h('p', { class: 'muted' }, 'Guard watch for your house of worship’s security team.'), f,
       mode === 'login' ? h('div', { class: 'row wrap' }, link('I have an invite code', 'redeem'), link('Forgot password?', 'reset')) : link('Back to sign in', 'login'),
       h('p', { class: 'muted small' }, 'Accounts are invite-only. We store your name, login and a salted password hash. No email, phone number or member directory.')));
   };
@@ -329,7 +329,7 @@ function renderChrome() {
   const pill = S.locked ? h('span', { class: 'pill lock' }, 'Shabbat · locked')
     : li.next ? h('span', { class: 'pill on' }, `Locks ${fmtLock(li.next)}`)
     : S.myEvent?.active ? h('span', { class: 'pill live' }, 'Event live') : null;
-  clear(hdr).append(h('div', { class: 'grow' }, h('h1', {}, S.congregation || 'Mishmar'), h('small', {}, `${S.me.name} · ${S.me.role}`)), ...(pill ? [pill] : []));
+  clear(hdr).append(brandIcon(), h('div', { class: 'grow' }, h('h1', {}, S.congregation || 'Mishmar'), h('small', {}, `${S.me.name} · ${S.me.role}`)), ...(pill ? [pill] : []));
   const nav = clear($('#nav'));
   const list = tabs();
   nav.hidden = !list.length;
@@ -337,6 +337,8 @@ function renderChrome() {
     'aria-current': S.tab === id ? 'page' : null, onclick: () => go(id),
   }, svg(ICON[id]), label))));
 }
+const SHIELD = 'M12 3l7 3v5c0 4.6-3 8.4-7 10-4-1.6-7-5.4-7-10V6l7-3zM9 12l2 2 4-4';
+function brandIcon(lg) { return h('span', { class: lg ? 'app-icon lg' : 'app-icon', 'aria-hidden': 'true' }, svg(SHIELD)); }
 function svg(d) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
