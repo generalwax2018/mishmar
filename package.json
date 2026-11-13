@@ -41,6 +41,6 @@
     "leaflet": "^1.9.4",
     "multer": "^2.5.0",
     "qrcode-generator": "^1.4.4",
-    "web-push": "^3.6.7"
+    "web-push": "^4.0.0"
   }
 }
