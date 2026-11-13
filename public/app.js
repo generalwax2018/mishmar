@@ -180,7 +180,8 @@ function showAuth() {
     clear(root).append(h('div', { class: 'auth' },
       brandIcon(true), h('h1', {}, 'Mishmar'), h('p', { class: 'muted' }, 'Guard watch for your house of worship’s security team.'), f,
       mode === 'login' ? h('div', { class: 'row wrap' }, link('I have an invite code', 'redeem'), link('Forgot password?', 'reset')) : link('Back to sign in', 'login'),
-      h('p', { class: 'muted small' }, 'Accounts are invite-only. We store your name, login and a salted password hash. No email, phone number or member directory.')));
+      h('p', { class: 'muted small' }, 'Accounts are invite-only. We store your name, login and a salted password hash. No email, phone number or member directory.'),
+      h('p', { class: 'muted small' }, 'Mishmar is free, open-source software (AGPL-3.0). ', h('a', { href: '/source', target: '_blank', rel: 'noopener' }, 'Source code'))));
   };
   draw();
 }

@@ -146,6 +146,10 @@ app.post('/api/auth/logout', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+// AGPL section 13: every user can get the source of the version they're using.
+const SOURCE_URL = process.env.MISHMAR_SOURCE_URL || 'https://github.com/generalwax2018/mishmar';
+app.get('/source', (req, res) => res.redirect(302, SOURCE_URL));
+
 app.get('/api/me', auth, (req, res) => {
   const c = getCongregation();
   res.json({

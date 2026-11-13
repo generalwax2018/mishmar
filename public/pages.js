@@ -721,7 +721,10 @@ function privacyPage(v) {
   v.append(h('h2', {}, 'Your data'), h('div', { class: 'card' },
     h('p', {}, 'Mishmar keeps your name, login and a password hash. No email, phone number or member directory: guards only see names on the schedule and their own event.'),
     h('p', {}, 'Alert locations are deleted after 14 days. Live event positions are opt-in, only kept as your latest point, and deleted when the event ends. Team messages are deleted after 7 days. Incident reports are kept for a year.'),
-    h('p', { class: 'muted small' }, 'Incident text, locations, messages, briefings and every photo are encrypted on the server. Photos are stripped of GPS/EXIF metadata.')));
+    h('p', { class: 'muted small' }, 'Incident text, locations, messages, briefings and every photo are encrypted on the server. Photos are stripped of GPS/EXIF metadata.')),
+    h('h2', {}, 'About'), h('div', { class: 'card' },
+      h('p', {}, 'Mishmar Guard Watch is free, open-source software under the GNU AGPL-3.0. If your team runs a modified version, the license asks you to share those changes with your users.'),
+      h('p', {}, h('a', { href: '/source', target: '_blank', rel: 'noopener' }, 'View the source code \u203a'))));
 }
 
 boot();

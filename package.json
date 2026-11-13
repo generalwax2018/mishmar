@@ -1,8 +1,32 @@
 {
   "name": "mishmar-guard-watch",
-  "version": "0.1.0",
-  "description": "",
-  "main": "index.js",
+  "version": "0.4.0",
+  "description": "Mobile-first PWA for house-of-worship security teams: scheduling, silent alerts, incident reports, layouts, outdoor events, and a Shabbat / Yom Tov lock.",
+  "license": "AGPL-3.0-or-later",
+  "author": "Michael Waxman",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/generalwax2018/mishmar.git"
+  },
+  "homepage": "https://github.com/generalwax2018/mishmar#readme",
+  "bugs": {
+    "url": "https://github.com/generalwax2018/mishmar/issues"
+  },
+  "keywords": [
+    "security",
+    "house-of-worship",
+    "synagogue",
+    "church",
+    "pwa",
+    "shabbat",
+    "incident-reporting",
+    "safety"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module",
   "scripts": {
     "test": "node --no-warnings test/e2e.js && node --no-warnings test/v2.js && node --no-warnings test/v3.js",
     "start": "node --no-warnings src/server.js",
@@ -10,9 +34,6 @@
     "invite": "node --no-warnings src/admin-cli.js invite",
     "reset-login": "node --no-warnings src/admin-cli.js reset"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "@hebcal/core": "^6.14.7",
     "express": "^5.3.0",
@@ -21,6 +42,5 @@
     "multer": "^2.5.0",
     "qrcode-generator": "^1.4.4",
     "web-push": "^3.6.7"
-  },
-  "type": "module"
+  }
 }

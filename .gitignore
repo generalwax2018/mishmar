@@ -5,3 +5,9 @@ data/
 *.db-shm
 .env
 backups/
+.env.*
+!.env.example
+*.key
+vapid.json
+.DS_Store
+Thumbs.db

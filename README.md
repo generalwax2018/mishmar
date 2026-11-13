@@ -1,6 +1,27 @@
 # Mishmar Guard Watch
 
-Mobile-first PWA for house-of-worship security teams: scheduling, one-tap silent alerts, quick team messaging, incident reports, building layout surveys, outdoor event mode with live team positions, and an optional **Shabbat / Yom Tov lock**.
+[![test](https://github.com/generalwax2018/mishmar/actions/workflows/test.yml/badge.svg)](https://github.com/generalwax2018/mishmar/actions/workflows/test.yml)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+
+Free, open-source, mobile-first app for **house-of-worship security teams**. It's built for volunteer guards at synagogues, churches, mosques and temples:
+
+- scheduling
+- a one-tap silent alert
+- quick team messages
+- incident reports with photos
+- building layout surveys
+- outdoor event mode with live team positions
+- an optional **Shabbat / Yom Tov lock**
+
+<p>
+<img src="docs/screenshots/now-light.webp" width="230" alt="Now screen with the silent alert button">
+<img src="docs/screenshots/now-dark.webp" width="230" alt="Now screen in dark mode">
+<img src="docs/screenshots/invite-dark.webp" width="230" alt="Inviting a new team member">
+</p>
+
+> **Mishmar does not replace 911.** It coordinates your team. In an emergency, call emergency services first. Test alert delivery on your team's real phones before you rely on it.
+
+It is one Node process and one SQLite file. There's no tracking, no ads, and no third-party services. It installs to the Home Screen like an app.
 
 ## Run it
 
@@ -120,3 +141,17 @@ The app is one Node process plus a `data/` folder. Any host that runs a containe
 - **Two-step sign-in is optional.** A setting to require it for admins and coordinators is a small next step.
 - **Reset codes during Shabbat:** issuing them is a routine action, so it's locked. A guard who forgets their password during Shabbat can't get a reset until Havdalah. Decide with your rabbi whether that should change.
 - **Push delivery** still needs testing on real phones against Apple and Google push services.
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Please **never post real floor plans, photos, incident details or member names**, and report security issues privately (see [SECURITY.md](SECURITY.md)).
+
+## License
+
+Copyright (C) 2026 Michael Waxman.
+
+Mishmar is free software. You can redistribute it and/or modify it under the terms of the [GNU Affero General Public License](LICENSE), version 3 or (at your option) any later version.
+
+**If you run a modified copy for others,** the AGPL asks you to offer those users your source. Set `MISHMAR_SOURCE_URL` to your fork, and the app's "Source code" link will point there. Third-party components and their licenses are listed in [THIRD_PARTY.md](THIRD_PARTY.md).
+
+This software comes with no warranty. It is not a substitute for professional security advice, training or emergency services.
