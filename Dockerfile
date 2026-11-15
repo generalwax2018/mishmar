@@ -6,7 +6,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY src ./src
 COPY public ./public
 RUN mkdir -p /data && chown node:node /data
-ENV NODE_ENV=production MISHMAR_DATA=/data PORT=3000
+ENV NODE_ENV=production MISHMAR_DATA=/data MISHMAR_BACKUP_DIR=/data/backups PORT=3000
 VOLUME /data
 EXPOSE 3000
 USER node

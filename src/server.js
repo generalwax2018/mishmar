@@ -628,7 +628,7 @@ app.get('/healthz', (req, res) => {
 
 // ---------- static + errors ----------
 app.use('/api', (req, res) => bad(res, 'not_found', 404));
-app.use('/vendor/qrcode', express.static(path.join(ROOT, 'node_modules', 'qrcode-generator'), { maxAge: '7d' }));
+app.use('/vendor/qrcode', express.static(path.join(ROOT, 'node_modules', 'qrcode-generator', 'dist'), { maxAge: '7d' }));
 app.use('/vendor/leaflet', express.static(path.join(ROOT, 'node_modules', 'leaflet', 'dist'), { maxAge: '7d' }));
 app.use(express.static(path.join(ROOT, 'public'), {
   setHeaders: (res, p) => { if (p.endsWith('sw.js') || p.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); },

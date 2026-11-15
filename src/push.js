@@ -3,7 +3,7 @@
 // authenticated API after the user opens the app.
 import fs from 'node:fs';
 import path from 'node:path';
-import webpush from 'web-push';
+import * as webpush from 'web-push';
 import { db, DATA_DIR } from './db.js';
 import { decJSON, sha256, encJSON } from './crypto.js';
 

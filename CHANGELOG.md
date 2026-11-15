@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1
+- Docker: backups now go to /data/backups on the persistent volume (they were going to a folder the container couldn't write to).
+- Dependency updates: web-push 4 (ES module), qrcode-generator 2, @hebcal/core 6.16.
+- Added DEPLOY.md, a step-by-step hosting guide (VM with Caddy, or a container host).
+
 ## 0.4.0
 - Easy invites: a "+ Invite someone" button on the Now screen, a name and plain-language role on each invite, one-tap sending by text, and a list of waiting invites where a leader can show a code again or cancel it.
 - Glass interface that follows the phone's light or dark setting. Outdoor display mode stays solid and high-contrast.

@@ -122,6 +122,8 @@ Please have your rabbi review the zmanim and which functions stay available.
 
 ## Hosting
 
+Step-by-step instructions are in [DEPLOY.md](DEPLOY.md).
+
 The app is one Node process plus a `data/` folder. Any host that runs a container with a persistent disk works.
 
 1. **Build and run:** use the `Dockerfile`. Mount a persistent volume at `/data`.
