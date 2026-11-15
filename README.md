@@ -3,7 +3,7 @@
 [![test](https://github.com/generalwax2018/mishmar/actions/workflows/test.yml/badge.svg)](https://github.com/generalwax2018/mishmar/actions/workflows/test.yml)
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-Free, open-source, mobile-first app for **house-of-worship security teams**. It's built for volunteer guards at synagogues, churches, mosques and temples:
+Free, open-source app for house-of-worship security teams: silent alerts, scheduling, incident reports, and a Shabbat / Yom Tov mode.
 
 - scheduling
 - a one-tap silent alert
